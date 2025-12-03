@@ -1,0 +1,4232 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Farq - Branch Analytics Dashboard</title>
+    <script src='https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css' rel='stylesheet' />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+
+        /* Left Sidebar Navigation */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 250px;
+            background: linear-gradient(180deg, #2d7a4f 0%, #1e5738 100%);
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 25px 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar-header h1 {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .sidebar-header p {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 12px;
+        }
+
+        .sidebar-nav {
+            padding: 20px 0;
+        }
+
+        .quick-insights {
+            padding: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            margin-top: auto;
+        }
+
+        .quick-insights-title {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 15px;
+        }
+
+        .insight-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            color: white;
+            font-size: 14px;
+        }
+
+        .insight-label {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .insight-value {
+            font-weight: bold;
+            color: white;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 15px 25px;
+            color: rgba(255, 255, 255, 0.8);
+            cursor: pointer;
+            transition: all 0.3s;
+            border-left: 3px solid transparent;
+            font-size: 15px;
+            font-weight: 500;
+        }
+
+        .nav-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+
+        .nav-item.active {
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            border-left-color: #81c784;
+        }
+
+        .nav-item-icon {
+            margin-right: 12px;
+            font-size: 18px;
+        }
+
+        /* Main Content Area */
+        .main-content {
+            margin-left: 250px;
+            min-height: 100vh;
+        }
+
+        .page {
+            display: none;
+            visibility: hidden;
+        }
+
+        .page.active {
+            display: block;
+            visibility: visible;
+        }
+
+        /* Ensure map page doesn't interfere when hidden */
+        .map-page:not(.active) #map,
+        .map-page:not(.active) .map-filters-container,
+        .map-page:not(.active) .detail-sidebar,
+        .map-page:not(.active) .map-summary-bar {
+            display: none;
+        }
+
+        /* Statistics Page */
+        .stats-page {
+            padding: 0;
+            overflow-y: auto;
+            height: 100vh;
+            background: #1a1a1a;
+        }
+
+        .stats-header {
+            position: sticky;
+            top: 0;
+            background: #252525;
+            padding: 20px 30px;
+            border-bottom: 1px solid #404040;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .stats-header-date {
+            color: #e0e0e0;
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .stats-header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .stats-header-btn {
+            background: #2d2d2d;
+            border: 1px solid #404040;
+            color: #e0e0e0;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .stats-header-btn:hover {
+            background: #404040;
+            border-color: #555;
+        }
+
+        .stats-content {
+            padding: 30px;
+        }
+
+        .executive-summary {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .executive-card {
+            background: #2d2d2d;
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid #404040;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .executive-card-title {
+            color: #a0a0a0;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .executive-card-value {
+            color: #2d7a4f;
+            font-size: 36px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .executive-card {
+            background: #2d2d2d;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            border: 1px solid #404040;
+            transition: transform 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .stat-card-title {
+            color: #a0a0a0;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .stat-card-value {
+            color: #2d7a4f;
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-card-subtitle {
+            color: #888;
+            font-size: 11px;
+        }
+
+        .section-card {
+            background: #2d2d2d;
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid #404040;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            margin-bottom: 30px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .section-title {
+            color: #e0e0e0;
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section-description {
+            color: #a0a0a0;
+            font-size: 13px;
+            margin-bottom: 20px;
+        }
+
+        .search-bar {
+            width: 100%;
+            padding: 10px 15px;
+            background: #1a1a1a;
+            border: 1px solid #404040;
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .search-bar::placeholder {
+            color: #666;
+        }
+
+        .branch-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .branch-list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            border-bottom: 1px solid #404040;
+            transition: background 0.2s;
+        }
+
+        .branch-list-item:hover {
+            background: #252525;
+        }
+
+        .branch-list-item:last-child {
+            border-bottom: none;
+        }
+
+        .branch-info {
+            flex: 1;
+        }
+
+        .branch-name {
+            color: #e0e0e0;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+
+        .branch-location {
+            color: #a0a0a0;
+            font-size: 12px;
+        }
+
+        .branch-platforms {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .platform-badge {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .platform-a {
+            background: #FF9800;
+            color: white;
+        }
+
+        .platform-b {
+            background: #2196F3;
+            color: white;
+        }
+
+        .platform-c {
+            background: #9C27B0;
+            color: white;
+        }
+
+        .rating-badge {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #FFD700;
+            font-size: 12px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #404040;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            color: #a0a0a0;
+            cursor: pointer;
+            font-size: 14px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            color: #2d7a4f;
+            border-bottom-color: #2d7a4f;
+        }
+
+        .tab:hover {
+            color: #e0e0e0;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .insights-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .insight-card {
+            background: #2d2d2d;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #404040;
+        }
+
+        .insight-card-title {
+            color: #e0e0e0;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .insight-card-description {
+            color: #a0a0a0;
+            font-size: 12px;
+            margin-bottom: 15px;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .chart-card {
+            background: #2d2d2d;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            border: 1px solid #404040;
+        }
+
+        .chart-card h3 {
+            color: #e0e0e0;
+            font-size: 14px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #404040;
+        }
+
+        .chart-card-description {
+            color: #a0a0a0;
+            font-size: 11px;
+            margin-bottom: 15px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #1a1a1a;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #2d7a4f;
+            transition: width 0.3s;
+        }
+
+        .city-breakdown {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .city-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #252525;
+            border-radius: 8px;
+        }
+
+        .city-name {
+            color: #e0e0e0;
+            font-weight: 500;
+        }
+
+        .city-stats {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .rating-comparison {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .rating-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #252525;
+            border-radius: 6px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: #2d2d2d;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            border-top: 4px solid #2d7a4f;
+            border: 1px solid #404040;
+        }
+
+        .stat-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+        }
+
+        .stat-card-title {
+            color: #a0a0a0;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card-value {
+            color: #2d7a4f;
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .stat-card-subtitle {
+            color: #888;
+            font-size: 12px;
+        }
+
+        .charts-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .chart-card {
+            background: #2d2d2d;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            border: 1px solid #404040;
+        }
+
+        .chart-card h3 {
+            color: #e0e0e0;
+            font-size: 16px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #404040;
+        }
+
+        /* Map Page */
+        .map-page {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+            background: #1a1a1a;
+        }
+
+        .map-filters-container {
+            position: fixed;
+            top: 0;
+            left: 250px;
+            width: 320px;
+            background: #2d2d2d;
+            border-radius: 0 12px 12px 0;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+            z-index: 150;
+            max-height: 100vh;
+            overflow-y: auto;
+            border: none;
+            border-left: 1px solid #404040;
+            border-right: 1px solid #404040;
+            border-bottom: 1px solid #404040;
+            backdrop-filter: blur(10px);
+            transition: transform 0.3s ease-in-out;
+        }
+
+        .map-filters-container.hidden {
+            transform: translateX(-100%);
+        }
+
+        .map-filters-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .map-filters-container::-webkit-scrollbar-track {
+            background: #1a1a1a;
+            border-radius: 4px;
+        }
+
+        .map-filters-container::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+
+        .map-filters-container::-webkit-scrollbar-thumb:hover {
+            background: #666;
+        }
+
+        .map-filters-header {
+            padding: 18px 20px;
+            border-bottom: 1px solid #404040;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #252525;
+            border-radius: 0;
+        }
+
+        .map-filters-header h3 {
+            font-size: 16px;
+            color: #e0e0e0;
+            margin: 0;
+            font-weight: 600;
+        }
+
+        .reset-btn {
+            background: #404040;
+            border: 1px solid #555;
+            color: #e0e0e0;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .reset-btn:hover {
+            background: #505050;
+            border-color: #666;
+        }
+
+        .filter-section {
+            padding: 15px 20px;
+            border-bottom: 1px solid #404040;
+            background: #2d2d2d;
+        }
+
+        .filter-section:last-child {
+            border-bottom: none;
+        }
+
+        .filter-section-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #a0a0a0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .filter-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+        }
+
+        .filter-item-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #e0e0e0;
+        }
+
+        .filter-item-count {
+            color: #a0a0a0;
+            font-size: 13px;
+        }
+
+        /* Toggle Switch */
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #555;
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: #e0e0e0;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        .toggle-switch input:checked+.toggle-slider {
+            background-color: #2d7a4f;
+        }
+
+        .toggle-switch input:checked+.toggle-slider:before {
+            transform: translateX(20px);
+        }
+
+        .city-select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            color: #333;
+            background: white;
+            cursor: pointer;
+        }
+
+        #map {
+            position: fixed !important;
+            top: 0 !important;
+            left: 570px !important;
+            right: 400px !important;
+            bottom: 60px !important;
+            width: auto !important;
+            height: auto !important;
+        }
+
+        .map-summary-bar {
+            position: fixed;
+            bottom: 0;
+            left: 570px;
+            right: 400px;
+            background: #252525;
+            padding: 12px 20px;
+            border-top: 1px solid #404040;
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            z-index: 100;
+            box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .summary-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #e0e0e0;
+        }
+
+        .summary-item-icon {
+            font-size: 16px;
+        }
+
+        .summary-item-value {
+            font-weight: 600;
+            color: #e0e0e0;
+        }
+
+        /* Right Detail Sidebar */
+        .detail-sidebar {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 400px;
+            background: #252525;
+            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.5);
+            z-index: 4;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #404040;
+            transition: transform 0.3s ease-in-out;
+        }
+
+        .detail-sidebar.hidden {
+            transform: translateX(100%);
+        }
+
+        .detail-sidebar::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .detail-sidebar::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        .detail-sidebar::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+
+        .detail-sidebar::-webkit-scrollbar-thumb:hover {
+            background: #666;
+        }
+
+        .detail-header {
+            padding: 20px;
+            background: linear-gradient(135deg, #2d7a4f 0%, #1e5738 100%);
+            color: white;
+        }
+
+        .detail-header h3 {
+            font-size: 18px;
+            margin-bottom: 5px;
+        }
+
+        .detail-header p {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .detail-content {
+            flex: 1;
+            padding: 20px;
+            background: #252525;
+        }
+
+        .detail-placeholder {
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
+        }
+
+        .detail-placeholder-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            opacity: 0.3;
+        }
+
+        .branch-detail {
+            display: none;
+        }
+
+        .branch-detail.active {
+            display: block;
+        }
+
+        .branch-header {
+            margin-bottom: 20px;
+        }
+
+        .branch-name {
+            font-size: 20px;
+            color: #e0e0e0;
+            margin-bottom: 10px;
+        }
+
+        .branch-logo {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .branch-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #FFD700, #FFA500);
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .detail-section {
+            margin-bottom: 25px;
+        }
+
+        .detail-section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #2d7a4f;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #404040;
+        }
+
+        .detail-label {
+            color: #a0a0a0;
+            font-size: 13px;
+        }
+
+        .detail-value {
+            color: #e0e0e0;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .source-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            margin-bottom: 8px;
+            margin-right: 8px;
+        }
+
+        .source-tag-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        /* Loading Overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(26, 26, 26, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2d7a4f;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .loading-text {
+            margin-top: 20px;
+            color: #2d7a4f;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        /* Map Legend */
+        .legend {
+            position: fixed;
+            bottom: 20px;
+            left: 270px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 10;
+        }
+
+        .legend h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        /* Pulse animation for multi-source branches */
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7);
+            }
+
+            50% {
+                box-shadow: 0 0 0 8px rgba(255, 215, 0, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 215, 0, 0);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading data...</div>
+    </div>
+
+    <!-- Left Sidebar Navigation -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1>Farq Analytics Dashboard</h1>
+        </div>
+        <div class="sidebar-nav">
+            <div class="nav-item" onclick="showPage('stats')">
+                <span class="nav-item-icon">&#9776;</span>
+                <span>Statistics</span>
+            </div>
+            <div class="nav-item active" onclick="showPage('map')">
+                <span class="nav-item-icon">&#127758;</span>
+                <span>Interactive Map</span>
+            </div>
+        </div>
+        <div class="quick-insights">
+            <div class="quick-insights-title">Quick Insights</div>
+            <div class="insight-item">
+                <span class="insight-label">Expansion Opportunities</span>
+                <span class="insight-value" id="insight-expansion">0</span>
+            </div>
+            <div class="insight-item">
+                <span class="insight-label">Prime Potential</span>
+                <span class="insight-value" id="insight-prime">0</span>
+            </div>
+            <div class="insight-item">
+                <span class="insight-label">Multi-Source</span>
+                <span class="insight-value" id="insight-multi">0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Statistics Page -->
+        <div id="stats-page" class="page stats-page">
+            <!-- Header -->
+            <div class="stats-header">
+                <div class="stats-header-date" id="stats-date"></div>
+                <div class="stats-header-actions">
+                    <button class="stats-header-btn">Refresh</button>
+                    <button class="stats-header-btn">Export CSV</button>
+                    <button class="stats-header-btn">Generate Report</button>
+                </div>
+            </div>
+
+            <div class="stats-content">
+                <!-- Executive Summary -->
+                <div class="executive-summary">
+                    <div class="executive-card">
+                        <div class="executive-card-title">Market Position</div>
+                        <div class="executive-card-value" id="market-index">0</div>
+                        <div style="color: #888; font-size: 11px; margin-bottom: 5px;">/100</div>
+                        <div style="color: #2d7a4f; font-size: 12px; font-weight: 600;">Strong</div>
+                        <div style="color: #a0a0a0; font-size: 11px; margin-top: 8px;">Overall competitive standing
+                        </div>
+                    </div>
+                    <div class="executive-card">
+                        <div class="executive-card-title">Expansion Opportunity</div>
+                        <div class="executive-card-value" id="expansion-opportunity">0</div>
+                        <div style="color: #a0a0a0; font-size: 11px; margin-top: 8px;">Branches not on Jahez</div>
+                        <div style="color: #888; font-size: 10px; margin-top: 5px;">Potential new partnerships</div>
+                    </div>
+                    <div class="executive-card">
+                        <div class="executive-card-title">Prime Growth Potential</div>
+                        <div class="executive-card-value" id="prime-potential">0</div>
+                        <div style="color: #a0a0a0; font-size: 11px; margin-top: 8px;">Prime conversion targets</div>
+                        <div style="color: #888; font-size: 10px; margin-top: 5px;">High-value opportunities</div>
+                    </div>
+                    <div class="executive-card">
+                        <div class="executive-card-title">Competitive Index</div>
+                        <div class="executive-card-value" id="competitive-index">0</div>
+                        <div style="color: #888; font-size: 11px; margin-bottom: 5px;">/100</div>
+                        <div style="color: #a0a0a0; font-size: 11px; margin-top: 8px;">Score out of 100</div>
+                        <div style="color: #888; font-size: 10px; margin-top: 5px;">Weighted performance score</div>
+                    </div>
+                </div>
+
+                <!-- Branches NOT in Jahez -->
+                <div class="section-card">
+                    <div class="section-header">
+                        <div class="section-title">
+                            Branches NOT in Jahez
+                            <span style="font-size: 16px; color: #666;">ℹ️</span>
+                        </div>
+                        <button class="stats-header-btn" style="padding: 6px 12px; font-size: 12px;">Export
+                            List</button>
+                    </div>
+                    <div class="section-description">
+                        Critical expansion opportunities - branches on competitors but missing from Jahez.
+                    </div>
+                    <input type="text" class="search-bar" placeholder="Search by name, city, or category...">
+                    <div class="branch-list" id="branches-not-jahez-list">
+                        <!-- Will be populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Potential Prime Opportunities -->
+                <div class="section-card">
+                    <div class="section-header">
+                        <div class="section-title">
+                            Potential Prime Opportunities
+                            <span style="font-size: 16px; color: #666;">ℹ️</span>
+                        </div>
+                        <button class="stats-header-btn" style="padding: 6px 12px; font-size: 12px;">Export
+                            List</button>
+                    </div>
+                    <div class="section-description">
+                        Branches with Prime on competitors - high value conversion targets.
+                    </div>
+                    <div class="tabs">
+                        <button class="tab active" onclick="switchPrimeTab('all')">All <span
+                                id="prime-all-count">0</span></button>
+                        <button class="tab" onclick="switchPrimeTab('not-jahez')">Not on Jahez <span
+                                id="prime-not-jahez-count">0</span></button>
+                    </div>
+                    <div class="branch-list" id="prime-opportunities-list">
+                        <!-- Will be populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Key Performance Indicators -->
+                <div class="section-card">
+                    <div class="section-title" style="margin-bottom: 20px;">Key Performance Indicators</div>
+                    <div class="kpi-grid">
+                        <div class="stat-card">
+                            <div class="stat-card-title">Total Branches</div>
+                            <div class="stat-card-value" id="total-branches">0</div>
+                            <div class="stat-card-subtitle">Jahez & all platforms</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Jahez Branches</div>
+                            <div class="stat-card-value" id="jahez-count">0</div>
+                            <div class="stat-card-subtitle">Current coverage</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Market Share</div>
+                            <div class="stat-card-value" id="market-share">0%</div>
+                            <div class="stat-card-subtitle">Strong position</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Coverage Gaps</div>
+                            <div class="stat-card-value" id="coverage-gaps">0%</div>
+                            <div class="stat-card-subtitle">Excellent</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Prime Penetration</div>
+                            <div class="stat-card-value" id="prime-penetration">0%</div>
+                            <div class="stat-card-subtitle">Strong</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Competitive Gap</div>
+                            <div class="stat-card-value" id="competitive-gap">0</div>
+                            <div class="stat-card-subtitle">Low gaps</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Exclusive Jahez</div>
+                            <div class="stat-card-value" id="exclusive-jahez">0</div>
+                            <div class="stat-card-subtitle">Only on Jahez</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Multi-Source</div>
+                            <div class="stat-card-value" id="multi-source-count">0</div>
+                            <div class="stat-card-subtitle">On 2+ platforms</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Avg Rating</div>
+                            <div class="stat-card-value" id="avg-rating">0</div>
+                            <div class="stat-card-subtitle">Vs 4.6 competitors</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Platform Comparison Metrics -->
+                <div class="section-card">
+                    <div class="section-title" style="margin-bottom: 20px;">Platform Comparison Metrics</div>
+                    <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        <div class="stat-card">
+                            <div class="stat-card-title">Avg Min Order (Jahez)</div>
+                            <div class="stat-card-value" id="avg-jahez-min-order">N/A</div>
+                            <div class="stat-card-subtitle">Average minimum order</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Avg Min Order (A)</div>
+                            <div class="stat-card-value" id="avg-hungerstation-min-order">N/A</div>
+                            <div class="stat-card-subtitle">Average minimum order</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Avg Delivery Time (B)</div>
+                            <div class="stat-card-value" id="avg-chefs-delivery-time">N/A</div>
+                            <div class="stat-card-subtitle">Average delivery time</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Avg Delivery Time (A)</div>
+                            <div class="stat-card-value" id="avg-hungerstation-delivery-time">N/A</div>
+                            <div class="stat-card-subtitle">Average delivery time</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Total Reviews (B)</div>
+                            <div class="stat-card-value" id="chefs-total-reviews">0</div>
+                            <div class="stat-card-subtitle">Customer reviews</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Total Reviews (A)</div>
+                            <div class="stat-card-value" id="hungerstation-total-reviews">0</div>
+                            <div class="stat-card-subtitle">Customer reviews</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Open Branches (B)</div>
+                            <div class="stat-card-value" id="chefs-open-percent">0%</div>
+                            <div class="stat-card-subtitle">Currently open</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-title">Open Branches (A)</div>
+                            <div class="stat-card-value" id="hungerstation-open-percent">0%</div>
+                            <div class="stat-card-subtitle">Currently open</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Expansion Opportunities -->
+                <div class="section-card">
+                    <div class="section-title" style="margin-bottom: 20px;">Top Expansion Opportunities</div>
+                    <div class="section-description" style="margin-bottom: 15px;">Highest priority branches to add to
+                        Jahez.</div>
+                    <div class="branch-list" id="top-expansion-list" style="max-height: 400px;">
+                        <!-- Will be populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Analytics Charts -->
+                <div class="section-card">
+                    <div class="section-title" style="margin-bottom: 20px;">Analytics Charts</div>
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>Branches by Source</h3>
+                            <div class="chart-card-description">Distribution across platforms.</div>
+                            <canvas id="sourcesChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Prime Subscription Distribution</h3>
+                            <div class="chart-card-description">Prime branches by platform.</div>
+                            <canvas id="primeChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Multi-Source Coverage</h3>
+                            <div class="chart-card-description">Platform overlap distribution.</div>
+                            <canvas id="coverageChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Source Comparison</h3>
+                            <div class="chart-card-description">Branch count by platform.</div>
+                            <canvas id="comparisonChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Market Share</h3>
+                            <div class="chart-card-description">Jahez vs competitors.</div>
+                            <canvas id="marketShareChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Coverage Gap Analysis</h3>
+                            <div class="chart-card-description">Branches on competitors but not Jahez.</div>
+                            <canvas id="gapChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- City Breakdown & Ratings & Performance -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 30px;">
+                    <div class="section-card">
+                        <div class="section-title" style="margin-bottom: 15px;">City Breakdown</div>
+                        <div class="section-description" style="margin-bottom: 15px;">Branch distribution by city with
+                            coverage analysis.</div>
+                        <div class="city-breakdown" id="city-breakdown">
+                            <!-- Will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    <div class="section-card">
+                        <div class="section-title" style="margin-bottom: 15px;">Ratings Comparison</div>
+                        <div class="section-description" style="margin-bottom: 15px;">Average customer ratings by
+                            platform.</div>
+                        <div style="margin-bottom: 15px;">
+                            <div style="color: #e0e0e0; font-size: 14px; margin-bottom: 5px;">Jahez vs Competitors:
+                                <span id="rating-diff">0</span>
+                            </div>
+                            <div style="color: #888; font-size: 11px;">Below competition average</div>
+                        </div>
+                        <div class="rating-comparison" id="rating-comparison">
+                            <!-- Will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    <div class="section-card">
+                        <div class="section-title" style="margin-bottom: 15px;">Performance Metrics</div>
+                        <div style="margin-bottom: 20px;">
+                            <div style="color: #e0e0e0; font-size: 13px; margin-bottom: 8px;">Coverage Efficiency</div>
+                            <div style="color: #a0a0a0; font-size: 11px; margin-bottom: 5px;">How well Jahez covers
+                                unique branches in the market.</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="coverage-efficiency-progress" style="width: 0%"></div>
+                            </div>
+                            <div style="color: #888; font-size: 11px; margin-top: 5px; text-align: right;"
+                                id="coverage-efficiency-text">0%</div>
+                        </div>
+                        <div style="margin-bottom: 20px;">
+                            <div style="color: #e0e0e0; font-size: 13px; margin-bottom: 8px;">Market Penetration</div>
+                            <div style="color: #a0a0a0; font-size: 11px; margin-bottom: 5px;">Jahez share of total
+                                branch count.</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="market-penetration-progress" style="width: 0%"></div>
+                            </div>
+                            <div style="color: #888; font-size: 11px; margin-top: 5px; text-align: right;"
+                                id="market-penetration-text">0%</div>
+                        </div>
+                        <div>
+                            <div style="color: #e0e0e0; font-size: 13px; margin-bottom: 8px;">Competitive Index</div>
+                            <div style="color: #a0a0a0; font-size: 11px; margin-bottom: 5px;">Overall competitive
+                                strength score.</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="competitive-index-progress" style="width: 0%"></div>
+                            </div>
+                            <div style="color: #888; font-size: 11px; margin-top: 5px; text-align: right;"
+                                id="competitive-index-text">0%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Map Page -->
+        <div id="map-page" class="page map-page active">
+            <!-- Map Filters Container -->
+            <div class="map-filters-container">
+                <div class="map-filters-header">
+                    <h3>Map Filters</h3>
+                    <button class="reset-btn" onclick="resetFilters()">Reset</button>
+                </div>
+
+                <!-- PLATFORMS -->
+                <div class="filter-section">
+                    <div class="filter-section-title">PLATFORMS</div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filter-jahez" checked onchange="updateFilters()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>Jahez</span>
+                        </label>
+                        <span class="filter-item-count" id="count-jahez">0</span>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filter-hungerstation" onchange="updateFilters()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>A</span>
+                        </label>
+                        <span class="filter-item-count" id="count-hungerstation">0</span>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filter-chefs" onchange="updateFilters()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>B</span>
+                        </label>
+                        <span class="filter-item-count" id="count-chefs">0</span>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filter-toyou" onchange="updateFilters()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>C</span>
+                        </label>
+                        <span class="filter-item-count" id="count-toyou">0</span>
+                    </div>
+                </div>
+
+                <!-- EXPANSION & OPPORTUNITIES -->
+                <div class="filter-section">
+                    <div class="filter-section-title">EXPANSION & OPPORTUNITIES</div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filter-not-jahez" onchange="updateFilters()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>Not in Jahez</span>
+                        </label>
+                        <span class="filter-item-count" id="count-not-jahez">0</span>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filter-prime-opportunities" onchange="updateFilters()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>Prime Opportunities</span>
+                        </label>
+                        <span class="filter-item-count" id="count-prime-opportunities">0</span>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filter-quick-wins" onchange="updateFilters()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>Quick Wins (2+ competitors)</span>
+                        </label>
+                        <span class="filter-item-count" id="count-quick-wins">0</span>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filter-at-risk" onchange="updateFilters()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>At-Risk (3+ competitors)</span>
+                        </label>
+                        <span class="filter-item-count" id="count-at-risk">0</span>
+                    </div>
+                </div>
+
+                <!-- BRANCH TYPES -->
+                <div class="filter-section">
+                    <div class="filter-section-title">BRANCH TYPES</div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filter-multi-source" onchange="updateFilters()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>Multi-Source</span>
+                        </label>
+                        <span class="filter-item-count" id="count-multi-source">0</span>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filter-exclusive-jahez" onchange="updateFilters()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>Exclusive Jahez</span>
+                        </label>
+                        <span class="filter-item-count" id="count-exclusive-jahez">0</span>
+                    </div>
+                </div>
+
+                <!-- RATINGS -->
+                <div class="filter-section">
+                    <div class="filter-section-title">RATINGS</div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filter-high-rated" onchange="updateFilters()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>High Rated (≥4.0)</span>
+                        </label>
+                        <span class="filter-item-count" id="count-high-rated">0</span>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filter-low-rated" onchange="updateFilters()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>Low Rated (&lt;3.0)</span>
+                        </label>
+                        <span class="filter-item-count" id="count-low-rated">0</span>
+                    </div>
+                </div>
+
+                <!-- PRIME & FEATURES -->
+                <div class="filter-section">
+                    <div class="filter-section-title">PRIME & FEATURES</div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="filter-prime-only" onchange="updateFilters()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>Prime Only</span>
+                        </label>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="show-clusters" checked onchange="toggleClusters()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>Cluster Markers</span>
+                        </label>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-item-label">
+                            <span class="toggle-switch">
+                                <input type="checkbox" id="show-heatmap" onchange="toggleHeatmap()">
+                                <span class="toggle-slider"></span>
+                            </span>
+                            <span>Heatmap Layer</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Map Container -->
+            <div id="map"></div>
+
+            <!-- Map Summary Bar -->
+            <div class="map-summary-bar">
+                <div class="summary-item">
+                    <span class="summary-item-icon">📍</span>
+                    <span class="summary-item-value" id="summary-total">0</span>
+                    <span>of</span>
+                    <span id="summary-total-all">0</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-item-icon" style="color: #d32f2f;">▲</span>
+                    <span class="summary-item-value" id="summary-opportunities">0</span>
+                    <span>Opportunities</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-item-icon" style="color: #FFD700;">👑</span>
+                    <span class="summary-item-value" id="summary-prime">0</span>
+                    <span>Prime</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-item-icon">📚</span>
+                    <span class="summary-item-value" id="summary-multi-source">0</span>
+                    <span>Multi-source</span>
+                </div>
+            </div>
+
+            <!-- Right Detail Sidebar -->
+            <div class="detail-sidebar">
+                <div class="detail-header">
+                    <h3>Branch Details</h3>
+                    <p>Click on a branch to view details</p>
+                </div>
+                <div class="detail-content">
+                    <div class="detail-placeholder" id="detail-placeholder">
+                        <div class="detail-placeholder-icon">&#128205;</div>
+                        <p>Select a branch on the map to view detailed information</p>
+                    </div>
+                    <div class="branch-detail" id="branch-detail">
+                        <!-- Branch details will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Set stats page date
+        function setStatsDate() {
+            const now = new Date();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            const dateStr = now.toLocaleDateString('en-US', options);
+            const dateElement = document.getElementById('stats-date');
+            if (dateElement) {
+                dateElement.textContent = dateStr;
+            }
+        }
+
+        // Page navigation
+        function showPage(pageName) {
+            // Hide all pages
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+            // Show selected page
+            document.getElementById(pageName + '-page').classList.add('active');
+
+            // Update nav items
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.target.closest('.nav-item').classList.add('active');
+
+            // Set date for stats page
+            if (pageName === 'stats') {
+                setStatsDate();
+            }
+
+            // Resize map when map page is shown
+            if (pageName === 'map') {
+                setTimeout(() => {
+                    map.resize();
+                    console.log('Map resized');
+                }, 100);
+            }
+        }
+
+        // Switch Prime tab
+        function switchPrimeTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            updatePrimeOpportunitiesList(tab);
+        }
+
+        // Update Branches NOT in Jahez list
+        function updateBranchesNotInJahezList(branches) {
+            const listContainer = document.getElementById('branches-not-jahez-list');
+            if (!listContainer) return;
+
+            listContainer.innerHTML = '';
+            branches.slice(0, 10).forEach((branch, index) => {
+                const match = branchMatches.get(branch.farq_source_id || `${getSourceType(branch.provider_name)}_${branch.id}`);
+                const matchSources = match ? Object.keys(match.sources) : [getSourceType(branch.provider_name)];
+
+                const platforms = matchSources.map(s => {
+                    if (s === 'hungerstation') return '<span class="platform-badge platform-a">A</span>';
+                    if (s === 'chefs') return '<span class="platform-badge platform-b">B</span>';
+                    if (s === 'toyou') return '<span class="platform-badge platform-c">C</span>';
+                    return '';
+                }).join('');
+
+                const rating = branch.rating ? `<div class="rating-badge">⭐ ${branch.rating}</div>` : '';
+
+                listContainer.innerHTML += `
+                    <div class="branch-list-item">
+                        <div style="color: #666; font-size: 12px; width: 30px;">${index + 1}</div>
+                        <div class="branch-info">
+                            <div class="branch-name">${branch.name || 'Unknown'}</div>
+                            <div class="branch-location">Riyadh | Restaurant</div>
+                        </div>
+                        <div class="branch-platforms">
+                            ${platforms}
+                            ${rating}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // Update Prime Opportunities list
+        function updatePrimeOpportunitiesList(tab = 'all') {
+            const listContainer = document.getElementById('prime-opportunities-list');
+            if (!listContainer) return;
+
+            let primeBranches = [];
+
+            // Use the same logic as isBranchInJahez for consistency
+            const primeJahezSourceIds = new Set(
+                allBranches.jahez
+                    .filter(b => b.farq_source_id)
+                    .map(b => b.farq_source_id)
+            );
+
+            const primeJahezExternalIds = new Set(
+                allBranches.jahez
+                    .filter(b => b.external_source_id)
+                    .map(b => b.external_source_id.toString())
+            );
+
+            function isBranchInJahezForPrime(branch) {
+                // Check by farq_source_id
+                if (branch.farq_source_id && primeJahezSourceIds.has(branch.farq_source_id)) {
+                    return true;
+                }
+
+                // Check by external_source_id
+                if (branch.external_source_id && primeJahezExternalIds.has(branch.external_source_id.toString())) {
+                    return true;
+                }
+
+                // Check by matching in branchMatches
+                const match = branchMatches.get(branch.farq_source_id || `${getSourceType(branch.provider_name)}_${branch.id}`);
+                if (match && match.sources.jahez && match.sources.jahez.length > 0) {
+                    return true;
+                }
+
+                // Check by name (100% match) and coordinates (very close)
+                if (branch.name && branch.lat && branch.lng) {
+                    const normalizedBranchName = normalizeNameForComparison(branch.name);
+                    if (normalizedBranchName) {
+                        const hasMatchingNameAndLocation = allBranches.jahez.some(jahezBranch => {
+                            if (!jahezBranch.name || !jahezBranch.lat || !jahezBranch.lng) {
+                                return false;
+                            }
+                            const normalizedJahezName = normalizeNameForComparison(jahezBranch.name);
+                            const nameMatch = normalizedBranchName === normalizedJahezName;
+                            const locationMatch = areCoordinatesCloseForComparison(
+                                branch.lat, branch.lng,
+                                jahezBranch.lat, jahezBranch.lng
+                            );
+                            return nameMatch && locationMatch;
+                        });
+                        if (hasMatchingNameAndLocation) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+
+            [...allBranches.chefs, ...allBranches.hungerstation].forEach(branch => {
+                const sourceType = getSourceType(branch.provider_name);
+                if (hasPrimeSubscription({ ...branch, sourceType })) {
+                    const isNotInJahez = !isBranchInJahezForPrime(branch);
+                    if (tab === 'all' || (tab === 'not-jahez' && isNotInJahez)) {
+                        primeBranches.push({ ...branch, sourceType, isNotInJahez });
+                    }
+                }
+            });
+
+            const allCountEl = document.getElementById('prime-all-count');
+            const notJahezCountEl = document.getElementById('prime-not-jahez-count');
+            if (allCountEl) allCountEl.textContent = primeBranches.length;
+            if (notJahezCountEl) notJahezCountEl.textContent = primeBranches.filter(b => b.isNotInJahez).length;
+
+            listContainer.innerHTML = '';
+            primeBranches.slice(0, 5).forEach((branch, index) => {
+                const match = branchMatches.get(branch.farq_source_id || `${branch.sourceType}_${branch.id}`);
+                const matchSources = match ? Object.keys(match.sources) : [branch.sourceType];
+
+                const platforms = matchSources.map(s => {
+                    if (s === 'hungerstation') return '<span class="platform-badge platform-a">A</span>';
+                    if (s === 'chefs') return '<span class="platform-badge platform-b">B</span>';
+                    if (s === 'toyou') return '<span class="platform-badge platform-c">C</span>';
+                    return '';
+                }).join('');
+
+                const rating = branch.rating ? `<div class="rating-badge">⭐ ${branch.rating}</div>` : '';
+
+                listContainer.innerHTML += `
+                    <div class="branch-list-item">
+                        <div style="color: #666; font-size: 12px; width: 30px;">${index + 1}</div>
+                        <div class="branch-info">
+                            <div class="branch-name">${branch.name || 'Unknown'}</div>
+                            <div class="branch-location">Riyadh | Restaurant</div>
+                        </div>
+                        <div class="branch-platforms">
+                            ${platforms}
+                            ${rating}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // Update Top Expansion list
+        function updateTopExpansionList(branches) {
+            const listContainer = document.getElementById('top-expansion-list');
+            if (!listContainer) return;
+
+            listContainer.innerHTML = '';
+            branches.slice(0, 10).forEach((branch, index) => {
+                const match = branchMatches.get(branch.farq_source_id || `${getSourceType(branch.provider_name)}_${branch.id}`);
+                const matchSources = match ? Object.keys(match.sources) : [getSourceType(branch.provider_name)];
+
+                const platforms = matchSources.map(s => {
+                    if (s === 'hungerstation') return '<span class="platform-badge platform-a">A</span>';
+                    if (s === 'chefs') return '<span class="platform-badge platform-b">B</span>';
+                    if (s === 'toyou') return '<span class="platform-badge platform-c">C</span>';
+                    return '';
+                }).join('');
+
+                listContainer.innerHTML += `
+                    <div class="branch-list-item" style="padding: 10px;">
+                        <div class="branch-info">
+                            <div class="branch-name" style="font-size: 13px;">${branch.name || 'Unknown'}</div>
+                        </div>
+                        <div class="branch-platforms">
+                            ${platforms}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // Update City Breakdown
+        function updateCityBreakdown() {
+            const container = document.getElementById('city-breakdown');
+            if (!container) return;
+
+            // Group branches by city (for now, we'll use Riyadh as default since we filter by bbox)
+            const totalBranches = allBranches.jahez.length + allBranches.chefs.length +
+                allBranches.hungerstation.length + allBranches.toyou.length;
+            const jahezBranches = allBranches.jahez.length;
+            const coverage = totalBranches > 0 ? Math.round((jahezBranches / totalBranches) * 100) : 0;
+
+            const jahezSourceIds = new Set(
+                allBranches.jahez
+                    .filter(b => b.farq_source_id)
+                    .map(b => b.farq_source_id)
+            );
+            let gaps = 0;
+            [...allBranches.chefs, ...allBranches.hungerstation, ...allBranches.toyou].forEach(branch => {
+                if (branch.farq_source_id && !jahezSourceIds.has(branch.farq_source_id)) {
+                    gaps++;
+                } else if (!branch.farq_source_id) {
+                    gaps++;
+                }
+            });
+
+            container.innerHTML = `
+                <div class="city-item">
+                    <div class="city-name">Riyadh</div>
+                    <div class="city-stats">
+                        <div style="color: #e0e0e0; font-size: 14px;">${totalBranches} branches</div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 100px; height: 8px; background: #1a1a1a; border-radius: 4px; overflow: hidden;">
+                                <div style="height: 100%; background: #2d7a4f; width: ${coverage}%"></div>
+                            </div>
+                            <div style="color: #a0a0a0; font-size: 12px;">${coverage}%</div>
+                        </div>
+                        <div style="color: #888; font-size: 11px;">Opportunities: ${gaps}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Update Ratings Comparison
+        function updateRatingsComparison() {
+            const container = document.getElementById('rating-comparison');
+            const diffElement = document.getElementById('rating-diff');
+            if (!container) return;
+
+            // Calculate average ratings per platform
+            let jahezRatings = [];
+            let chefsRatings = [];
+            let hungerstationRatings = [];
+            let toyouRatings = [];
+
+            allBranches.jahez.forEach(branch => {
+                if (branch.rating) jahezRatings.push(parseFloat(branch.rating));
+            });
+            allBranches.chefs.forEach(branch => {
+                if (branch.rating) chefsRatings.push(parseFloat(branch.rating));
+            });
+            allBranches.hungerstation.forEach(branch => {
+                if (branch.rating) hungerstationRatings.push(parseFloat(branch.rating));
+            });
+            allBranches.toyou.forEach(branch => {
+                if (branch.rating) toyouRatings.push(parseFloat(branch.rating));
+            });
+
+            const avgJahez = jahezRatings.length > 0 ?
+                (jahezRatings.reduce((a, b) => a + b, 0) / jahezRatings.length).toFixed(1) : '0';
+            const avgChefs = chefsRatings.length > 0 ?
+                (chefsRatings.reduce((a, b) => a + b, 0) / chefsRatings.length).toFixed(1) : '0';
+            const avgHungerstation = hungerstationRatings.length > 0 ?
+                (hungerstationRatings.reduce((a, b) => a + b, 0) / hungerstationRatings.length).toFixed(1) : '0';
+            const avgToyou = toyouRatings.length > 0 ?
+                (toyouRatings.reduce((a, b) => a + b, 0) / toyouRatings.length).toFixed(1) : '0';
+
+            // Calculate competitor average
+            const competitorRatings = [...chefsRatings, ...hungerstationRatings, ...toyouRatings];
+            const avgCompetitor = competitorRatings.length > 0 ?
+                (competitorRatings.reduce((a, b) => a + b, 0) / competitorRatings.length).toFixed(1) : '0';
+
+            const diff = (parseFloat(avgJahez) - parseFloat(avgCompetitor)).toFixed(1);
+            if (diffElement) {
+                diffElement.textContent = diff;
+                diffElement.style.color = parseFloat(diff) >= 0 ? '#2d7a4f' : '#f44336';
+            }
+
+            const ratings = [
+                { name: 'B', count: chefsRatings.length, avg: avgChefs },
+                { name: 'A', count: hungerstationRatings.length, avg: avgHungerstation },
+                { name: 'Jahez', count: jahezRatings.length, avg: avgJahez },
+                { name: 'C', count: toyouRatings.length, avg: avgToyou }
+            ].sort((a, b) => parseFloat(b.avg) - parseFloat(a.avg));
+
+            container.innerHTML = ratings.map((r, index) => `
+                <div class="rating-item">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="color: #666; font-size: 12px; width: 20px;">${index + 1}.</div>
+                        <div style="color: #e0e0e0; font-weight: 500;">${r.name}</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="color: #a0a0a0; font-size: 12px;">${r.count} ratings</div>
+                        <div style="color: #FFD700; font-weight: 600;">${r.avg} ⭐</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Update Average Rating
+        function updateAverageRating() {
+            const avgRatingEl = document.getElementById('avg-rating');
+            if (!avgRatingEl) return;
+
+            let allRatings = [];
+            [...allBranches.jahez, ...allBranches.chefs, ...allBranches.hungerstation, ...allBranches.toyou].forEach(branch => {
+                if (branch.rating) allRatings.push(parseFloat(branch.rating));
+            });
+
+            const avgRating = allRatings.length > 0 ?
+                (allRatings.reduce((a, b) => a + b, 0) / allRatings.length).toFixed(1) : '0';
+
+            avgRatingEl.textContent = avgRating;
+        }
+
+        // Update Platform Comparison Metrics
+        function updatePlatformComparisonMetrics() {
+            // Calculate average minimum order per platform
+            const jahezMinOrders = allBranches.jahez.filter(b => b.minimum_order).map(b => parseFloat(b.minimum_order));
+            const hungerstationMinOrders = allBranches.hungerstation.filter(b => b.minimum_order).map(b => parseFloat(b.minimum_order));
+
+            const avgJahezMinOrder = jahezMinOrders.length > 0 ?
+                (jahezMinOrders.reduce((a, b) => a + b, 0) / jahezMinOrders.length).toFixed(1) : 'N/A';
+            const avgHungerstationMinOrder = hungerstationMinOrders.length > 0 ?
+                (hungerstationMinOrders.reduce((a, b) => a + b, 0) / hungerstationMinOrders.length).toFixed(1) : 'N/A';
+
+            // Calculate average delivery time per platform
+            const chefsDeliveryTimes = [];
+            const hungerstationDeliveryTimes = [];
+
+            allBranches.chefs.forEach(b => {
+                if (b.deliveryTimeMin && b.deliveryTimeMax) {
+                    chefsDeliveryTimes.push((b.deliveryTimeMin + b.deliveryTimeMax) / 2);
+                }
+            });
+
+            allBranches.hungerstation.forEach(b => {
+                if (b.deliveryTimeMin && b.deliveryTimeMax) {
+                    hungerstationDeliveryTimes.push((b.deliveryTimeMin + b.deliveryTimeMax) / 2);
+                }
+            });
+
+            const avgChefsDeliveryTime = chefsDeliveryTimes.length > 0 ?
+                Math.round(chefsDeliveryTimes.reduce((a, b) => a + b, 0) / chefsDeliveryTimes.length) : null;
+            const avgHungerstationDeliveryTime = hungerstationDeliveryTimes.length > 0 ?
+                Math.round(hungerstationDeliveryTimes.reduce((a, b) => a + b, 0) / hungerstationDeliveryTimes.length) : null;
+
+            // Calculate total reviews per platform
+            const chefsReviews = allBranches.chefs.reduce((sum, b) => sum + (b.reviews || 0), 0);
+            const hungerstationReviews = allBranches.hungerstation.reduce((sum, b) => sum + (b.reviews || 0), 0);
+
+            // Calculate open branches percentage
+            const chefsOpen = allBranches.chefs.filter(b => b.isOpened === true).length;
+            const hungerstationOpen = allBranches.hungerstation.filter(b => b.isOpened === true).length;
+            const chefsOpenPercent = allBranches.chefs.length > 0 ?
+                Math.round((chefsOpen / allBranches.chefs.length) * 100) : 0;
+            const hungerstationOpenPercent = allBranches.hungerstation.length > 0 ?
+                Math.round((hungerstationOpen / allBranches.hungerstation.length) * 100) : 0;
+
+            // Update UI elements if they exist
+            const setTextContent = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            };
+
+            setTextContent('avg-jahez-min-order', avgJahezMinOrder === 'N/A' ? 'N/A' : avgJahezMinOrder + ' SAR');
+            setTextContent('avg-hungerstation-min-order', avgHungerstationMinOrder === 'N/A' ? 'N/A' : avgHungerstationMinOrder + ' SAR');
+            setTextContent('avg-chefs-delivery-time', avgChefsDeliveryTime ? avgChefsDeliveryTime + ' mins' : 'N/A');
+            setTextContent('avg-hungerstation-delivery-time', avgHungerstationDeliveryTime ? avgHungerstationDeliveryTime + ' mins' : 'N/A');
+            setTextContent('chefs-total-reviews', chefsReviews.toLocaleString());
+            setTextContent('hungerstation-total-reviews', hungerstationReviews.toLocaleString());
+            setTextContent('chefs-open-percent', chefsOpenPercent + '%');
+            setTextContent('hungerstation-open-percent', hungerstationOpenPercent + '%');
+        }
+
+        // Mapbox API Key
+        mapboxgl.accessToken = 'pk.eyJ1Ijoic3ZjLW9rdGEtbWFwYm94LXN0YWZmLWFjY2VzcyIsImEiOiJjbG5sMnExa3kxNTJtMmtsODJld24yNGJlIn0.RQ4CHchAYPJQZSiUJ0O3VQ';
+
+        // Open area coordinates
+        const bbox = {
+            minLng: 46.660231,
+            minLat: 24.676245,
+            maxLng: 46.705239,
+            maxLat: 24.709378
+        };
+
+        // Check if branch is within bbox
+        function isInBbox(lat, lng) {
+            return lat >= bbox.minLat && lat <= bbox.maxLat &&
+                lng >= bbox.minLng && lng <= bbox.maxLng;
+        }
+
+        // Source name mapping (hiding real names)
+        const sourceDisplayNames = {
+            'jahez': 'Jahez',
+            'chefs': 'B',
+            'hungerstation': 'A',
+            'toyou': 'C',
+            'Jahez': 'Jahez',
+            'TheChefz': 'B',
+            'HungerStation': 'A',
+            'ToYou': 'C'
+        };
+
+        function getDisplayName(sourceName) {
+            return sourceDisplayNames[sourceName] || sourceName;
+        }
+
+        // Calculate center
+        const center = [
+            (bbox.minLng + bbox.maxLng) / 2,
+            (bbox.minLat + bbox.maxLat) / 2
+        ];
+
+        // Data variables
+        let allBranches = {
+            jahez: [],
+            chefs: [],
+            hungerstation: [],
+            toyou: []
+        };
+
+        // Branch matches map
+        let branchMatches = new Map();
+
+        // Layer state tracking
+        let layersAdded = false;
+        let heatmapAdded = false;
+        let mapInitialized = false;
+        let dataLoaded = false;
+
+        // Prime subscriptions
+        let primeSubscriptions = {
+            jahez: new Set(),
+            hungerstation: new Set()
+        };
+
+        // Statistics charts
+        let charts = {};
+
+        // Create map using Mapbox Streets
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/streets-v12',
+            center: center,
+            zoom: 13,
+            pitch: 45,
+            bearing: 0,
+            antialias: true
+        });
+
+        map.on('load', () => {
+            // Hide POIs
+            const layers = map.getStyle().layers;
+            layers.forEach((layer) => {
+                if (layer.id.includes('poi') ||
+                    layer.id.includes('label') && !layer.id.includes('road') && !layer.id.includes('place')) {
+                    map.setLayoutProperty(layer.id, 'visibility', 'none');
+                }
+            });
+
+            // Find label layer for building insertion
+            const labelLayerId = layers.find(
+                (layer) => layer.type === 'symbol' && layer.layout['text-field']
+            ).id;
+
+            // Add 3D buildings layer
+            map.addLayer({
+                'id': '3d-buildings',
+                'source': 'composite',
+                'source-layer': 'building',
+                'filter': ['==', 'extrude', 'true'],
+                'type': 'fill-extrusion',
+                'minzoom': 15,
+                'paint': {
+                    'fill-extrusion-color': '#ffffff',
+                    'fill-extrusion-height': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        15,
+                        0,
+                        15.05,
+                        ['get', 'height']
+                    ],
+                    'fill-extrusion-base': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        15,
+                        0,
+                        15.05,
+                        ['get', 'min_height']
+                    ],
+                    'fill-extrusion-opacity': 0.9,
+                    'fill-extrusion-vertical-gradient': true
+                }
+            }, labelLayerId);
+
+            // Add overlay polygon with cutout for open area
+            map.addSource('overlay', {
+                'type': 'geojson',
+                'data': {
+                    'type': 'Feature',
+                    'geometry': {
+                        'type': 'Polygon',
+                        'coordinates': [
+                            [
+                                [-180, -90],
+                                [180, -90],
+                                [180, 90],
+                                [-180, 90],
+                                [-180, -90]
+                            ],
+                            [
+                                [bbox.minLng, bbox.minLat],
+                                [bbox.minLng, bbox.maxLat],
+                                [bbox.maxLng, bbox.maxLat],
+                                [bbox.maxLng, bbox.minLat],
+                                [bbox.minLng, bbox.minLat]
+                            ]
+                        ]
+                    }
+                }
+            });
+
+            map.addLayer({
+                'id': 'overlay-layer',
+                'type': 'fill',
+                'source': 'overlay',
+                'layout': {},
+                'paint': {
+                    'fill-color': '#000000',
+                    'fill-opacity': 0.5
+                }
+            });
+
+            // Add bbox outline
+            map.addSource('bbox-outline', {
+                'type': 'geojson',
+                'data': {
+                    'type': 'Feature',
+                    'geometry': {
+                        'type': 'Polygon',
+                        'coordinates': [
+                            [
+                                [bbox.minLng, bbox.minLat],
+                                [bbox.maxLng, bbox.minLat],
+                                [bbox.maxLng, bbox.maxLat],
+                                [bbox.minLng, bbox.maxLat],
+                                [bbox.minLng, bbox.minLat]
+                            ]
+                        ]
+                    }
+                }
+            });
+
+            map.addLayer({
+                'id': 'bbox-outline-layer',
+                'type': 'line',
+                'source': 'bbox-outline',
+                'layout': {},
+                'paint': {
+                    'line-color': '#2d7a4f',
+                    'line-width': 3
+                }
+            });
+
+            mapInitialized = true;
+        });
+
+        // Add map controls
+        map.addControl(new mapboxgl.NavigationControl(), 'bottom-left');
+        map.addControl(new mapboxgl.ScaleControl({
+            maxWidth: 200,
+            unit: 'metric'
+        }), 'bottom-right');
+
+        // Auto-hide sidebar functionality
+        let hideTimeout;
+        const filterPanel = document.querySelector('.map-filters-container');
+        const detailPanel = document.querySelector('.detail-sidebar');
+
+        function hidePanels() {
+            if (filterPanel) filterPanel.classList.add('hidden');
+            if (detailPanel) detailPanel.classList.add('hidden');
+        }
+
+        function showPanels() {
+            if (filterPanel) filterPanel.classList.remove('hidden');
+            if (detailPanel) detailPanel.classList.remove('hidden');
+        }
+
+        function scheduleHide() {
+            clearTimeout(hideTimeout);
+            showPanels();
+            hideTimeout = setTimeout(hidePanels, 1500); // Hide after 1.5 seconds of inactivity
+        }
+
+        // Show panels on map interactions
+        map.on('move', scheduleHide);
+        map.on('zoom', scheduleHide);
+        map.on('rotate', scheduleHide);
+        map.on('pitch', scheduleHide);
+        map.on('drag', scheduleHide);
+        map.on('wheel', scheduleHide);
+
+        // Show panels when hovering over them
+        if (filterPanel) {
+            filterPanel.addEventListener('mouseenter', () => {
+                clearTimeout(hideTimeout);
+                showPanels();
+            });
+            filterPanel.addEventListener('mouseleave', () => {
+                scheduleHide();
+            });
+        }
+
+        if (detailPanel) {
+            detailPanel.addEventListener('mouseenter', () => {
+                clearTimeout(hideTimeout);
+                showPanels();
+            });
+            detailPanel.addEventListener('mouseleave', () => {
+                scheduleHide();
+            });
+        }
+
+        // Initial schedule to hide after page load
+        scheduleHide();
+
+        // Load data
+        async function loadData() {
+            try {
+                // Load data files with better error handling
+                const loadJSON = async (url) => {
+                    console.log(`Loading ${url}...`);
+                    const response = await fetch(url);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: Failed to load ${url}`);
+                    }
+                    
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        console.warn(`Warning: ${url} has content-type: ${contentType}`);
+                    }
+                    
+                    const text = await response.text();
+                    
+                    // Check if response is HTML (error page)
+                    if (text.trim().startsWith('<') || text.trim().startsWith('<!DOCTYPE')) {
+                        throw new Error(`${url} returned HTML instead of JSON. File may be missing or too large. Size limit on Vercel is 50MB.`);
+                    }
+                    
+                    try {
+                        const data = JSON.parse(text);
+                        console.log(`✓ Loaded ${url} (${(text.length / 1024 / 1024).toFixed(2)} MB)`);
+                        return data;
+                    } catch (e) {
+                        console.error(`JSON Parse Error for ${url}:`, e);
+                        console.error('Response preview:', text.substring(0, 500));
+                        throw new Error(`Invalid JSON in ${url.split('/').pop()}: ${e.message}`);
+                    }
+                };
+
+                // Load large file from GitHub raw (to bypass Vercel's 50MB limit)
+                const githubRaw = 'https://raw.githubusercontent.com/farq-tech/final_dashbord/main/data/';
+                
+                const [jahezData, chefsData, hungerstationData, jahezPrime, hungerstationPrime] = await Promise.all([
+                    loadJSON(githubRaw + 'farq_db_public_source_providers.json'),
+                    loadJSON('data/farq_db_public_chefs_branches.json'),
+                    loadJSON('data/farq_db_public_hungerstation_branches_2.json'),
+                    loadJSON('data/subscription_jahez.json'),
+                    loadJSON('data/subscription_hungerstation.json')
+                ]);
+
+                // Load prime subscriptions
+                primeSubscriptions.jahez = new Set(jahezPrime.map(item => item.branch_id));
+                primeSubscriptions.hungerstation = new Set(hungerstationPrime.map(item => item.id));
+
+                console.log('Prime subscriptions loaded:', {
+                    jahez: primeSubscriptions.jahez.size.toLocaleString(),
+                    hungerstation: primeSubscriptions.hungerstation.size.toLocaleString()
+                });
+
+                // Process all data from main file
+                const jahezBranches = [];
+                const chefzBranches = [];
+                const hungerstationBranches = [];
+                const toyouBranches = [];
+
+                jahezData.forEach(b => {
+                    if (b.longitude && b.latitude && isInBbox(b.latitude, b.longitude)) {
+                        const branch = {
+                            id: b.id,
+                            external_source_id: b.external_source_id,
+                            farq_source_id: b.farq_source_id,
+                            name: b.name_ar || b.name_en,
+                            lat: b.latitude,
+                            lng: b.longitude,
+                            logo: b.logo_url,
+                            source: b.provider_name,
+                            provider_name: b.provider_name,
+                            deep_link: b.deep_link,
+                            minimum_order: b.minimum_order,
+                            details: b
+                        };
+
+                        if (b.provider_name === 'Jahez') {
+                            jahezBranches.push(branch);
+                        } else if (b.provider_name === 'TheChefz') {
+                            chefzBranches.push(branch);
+                        } else if (b.provider_name === 'HungerStation') {
+                            hungerstationBranches.push(branch);
+                        } else if (b.provider_name === 'ToYou') {
+                            toyouBranches.push(branch);
+                        }
+                    }
+                });
+
+                // Add branches from TheChefz file
+                chefsData.forEach(b => {
+                    if (b.longitude && b.latitude) {
+                        const lat = parseFloat(b.latitude);
+                        const lng = parseFloat(b.longitude);
+                        if (isInBbox(lat, lng)) {
+                            // Parse delivery time range (e.g., "25 - 35 mins")
+                            let deliveryTimeMin = null;
+                            let deliveryTimeMax = null;
+                            if (b.delivery_time_range) {
+                                const match = b.delivery_time_range.match(/(\d+)\s*-\s*(\d+)/);
+                                if (match) {
+                                    deliveryTimeMin = parseInt(match[1]);
+                                    deliveryTimeMax = parseInt(match[2]);
+                                }
+                            }
+
+                            chefzBranches.push({
+                                id: b.branch_id,
+                                farq_source_id: null,
+                                name: b.name,
+                                lat: lat,
+                                lng: lng,
+                                logo: b.profile_picture,
+                                rating: b.rating,
+                                reviews: b.reviews || 0,
+                                deliveryTimeMin: deliveryTimeMin,
+                                deliveryTimeMax: deliveryTimeMax,
+                                isOpened: b.is_opened === 1,
+                                source: 'TheChefz',
+                                provider_name: 'TheChefz',
+                                details: b
+                            });
+                        }
+                    }
+                });
+
+                // Add branches from HungerStation file
+                hungerstationData.forEach(b => {
+                    if (b['location.longitude'] && b['location.latitude']) {
+                        const lat = parseFloat(b['location.latitude']);
+                        const lng = parseFloat(b['location.longitude']);
+                        if (isInBbox(lat, lng)) {
+                            // Parse delivery time estimation
+                            let deliveryTimeMin = null;
+                            let deliveryTimeMax = null;
+                            if (b['time_estimation.min'] && b['time_estimation.max']) {
+                                deliveryTimeMin = parseInt(b['time_estimation.min']);
+                                deliveryTimeMax = parseInt(b['time_estimation.max']);
+                            }
+
+                            hungerstationBranches.push({
+                                id: b.id,
+                                farq_source_id: null,
+                                name: b.chain_name,
+                                lat: lat,
+                                lng: lng,
+                                logo: b.logo,
+                                rating: b.average_rating,
+                                reviews: b.rate_count || 0,
+                                minimum_order: b.minimum_order ? parseFloat(b.minimum_order) : null,
+                                deliveryTimeMin: deliveryTimeMin,
+                                deliveryTimeMax: deliveryTimeMax,
+                                isOpened: b.status === 'OPEN',
+                                source: 'HungerStation',
+                                provider_name: 'HungerStation',
+                                details: b
+                            });
+                        }
+                    }
+                });
+
+                allBranches.jahez = jahezBranches;
+                allBranches.chefs = chefzBranches;
+                allBranches.hungerstation = hungerstationBranches;
+                allBranches.toyou = toyouBranches;
+
+                console.log('Branches loaded:', {
+                    jahez: jahezBranches.length,
+                    chefs: chefzBranches.length,
+                    hungerstation: hungerstationBranches.length,
+                    toyou: toyouBranches.length
+                });
+
+                // Match branches across sources
+                matchBranchesAcrossSources();
+
+                // Update statistics
+                updateStats();
+                createCharts();
+
+                // Display branches on map
+                displayBranches();
+
+                // Add heatmap layer
+                setTimeout(() => {
+                    addHeatmapLayer();
+                }, 500);
+
+                // Hide loading overlay
+                document.getElementById('loading').style.display = 'none';
+                dataLoaded = true;
+
+                // Resize map after data is loaded
+                setTimeout(() => {
+                    map.resize();
+                }, 500);
+
+                console.log('Data loaded successfully:', {
+                    jahez: allBranches.jahez.length.toLocaleString(),
+                    chefs: allBranches.chefs.length.toLocaleString(),
+                    hungerstation: allBranches.hungerstation.length.toLocaleString(),
+                    toyou: allBranches.toyou.length.toLocaleString(),
+                    matches: branchMatches.size.toLocaleString()
+                });
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('loading').innerHTML = `
+                    <div style="color: #f44336; text-align: center;">
+                        <h2>Error Loading Data</h2>
+                        <p>${error.message}</p>
+                        <button onclick="location.reload()" style="padding: 10px 20px; background: #2d7a4f; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            Retry
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        // Match branches across sources based on farq_source_id
+        function matchBranchesAcrossSources() {
+            branchMatches.clear();
+
+            const allBranchesFlat = [
+                ...allBranches.jahez.map(b => ({ ...b, sourceType: 'jahez' })),
+                ...allBranches.chefs.map(b => ({ ...b, sourceType: 'chefs' })),
+                ...allBranches.hungerstation.map(b => ({ ...b, sourceType: 'hungerstation' })),
+                ...allBranches.toyou.map(b => ({ ...b, sourceType: 'toyou' }))
+            ];
+
+            allBranchesFlat.forEach(branch => {
+                const key = branch.farq_source_id || `${branch.sourceType}_${branch.id}`;
+
+                if (!branchMatches.has(key)) {
+                    branchMatches.set(key, {
+                        farq_source_id: branch.farq_source_id,
+                        lat: branch.lat,
+                        lng: branch.lng,
+                        sources: {}
+                    });
+                }
+
+                const match = branchMatches.get(key);
+                if (!match.sources[branch.sourceType]) {
+                    match.sources[branch.sourceType] = [];
+                }
+                match.sources[branch.sourceType].push(branch);
+            });
+        }
+
+        // Get branch matches
+        function getBranchMatches(branch) {
+            const sourceType = branch.sourceType || getSourceType(branch.provider_name);
+            const key = branch.farq_source_id || `${sourceType}_${branch.id}`;
+            return branchMatches.get(key) || { sources: {} };
+        }
+
+        // Determine source type from provider name
+        function getSourceType(providerName) {
+            if (providerName === 'Jahez') return 'jahez';
+            if (providerName === 'TheChefz') return 'chefs';
+            if (providerName === 'HungerStation' || providerName === 'Hungerstation') return 'hungerstation';
+            if (providerName === 'ToYou') return 'toyou';
+            return 'unknown';
+        }
+
+        // Check prime subscription
+        function hasPrimeSubscription(branch) {
+            const sourceType = branch.sourceType || getSourceType(branch.provider_name);
+
+            if (sourceType === 'jahez') {
+                const branchId = parseInt(branch.external_source_id);
+                return primeSubscriptions.jahez.has(branchId);
+            } else if (sourceType === 'hungerstation') {
+                const branchId = parseInt(branch.id);
+                return primeSubscriptions.hungerstation.has(branchId);
+            }
+
+            return false;
+        }
+
+        // Update statistics
+        function updateStats() {
+            const total = allBranches.jahez.length + allBranches.chefs.length +
+                allBranches.hungerstation.length + allBranches.toyou.length;
+
+            // Count prime subscriptions only for branches in bbox
+            let jahezPrimeCount = 0;
+            let hungerstationPrimeCount = 0;
+
+            allBranches.jahez.forEach(branch => {
+                if (hasPrimeSubscription({ ...branch, sourceType: 'jahez' })) {
+                    jahezPrimeCount++;
+                }
+            });
+
+            allBranches.hungerstation.forEach(branch => {
+                if (hasPrimeSubscription({ ...branch, sourceType: 'hungerstation' })) {
+                    hungerstationPrimeCount++;
+                }
+            });
+
+            const setTextContent = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            };
+
+            setTextContent('total-branches', total.toLocaleString());
+            setTextContent('jahez-count', allBranches.jahez.length.toLocaleString());
+            setTextContent('hungerstation-count', allBranches.hungerstation.length.toLocaleString());
+            setTextContent('chefs-count', allBranches.chefs.length.toLocaleString());
+            setTextContent('toyou-count', allBranches.toyou.length.toLocaleString());
+            setTextContent('jahez-prime-count', jahezPrimeCount.toLocaleString());
+            setTextContent('hungerstation-prime-count', hungerstationPrimeCount.toLocaleString());
+            setTextContent('total-prime-count', (jahezPrimeCount + hungerstationPrimeCount).toLocaleString());
+
+            // Calculate shared branches
+            let multiSource = 0;
+            let exclusiveJahez = 0;
+            branchMatches.forEach(match => {
+                const sourcesCount = Object.keys(match.sources).length;
+                if (sourcesCount > 1) {
+                    multiSource++;
+                }
+                if (sourcesCount === 1 && match.sources.jahez) {
+                    exclusiveJahez++;
+                }
+            });
+            setTextContent('multi-source-count', multiSource.toLocaleString());
+
+            // Calculate Jahez gaps - check all possible matching IDs
+            const jahezSourceIds = new Set(
+                allBranches.jahez
+                    .filter(b => b.farq_source_id)
+                    .map(b => b.farq_source_id)
+            );
+
+            const jahezExternalIds = new Set(
+                allBranches.jahez
+                    .filter(b => b.external_source_id)
+                    .map(b => b.external_source_id.toString())
+            );
+
+            const jahezIds = new Set(
+                allBranches.jahez
+                    .map(b => b.id.toString())
+            );
+
+            // Helper function to normalize name for comparison (shared function)
+            function normalizeNameForComparison(name) {
+                if (!name) return '';
+                return name.toString()
+                    .toLowerCase()
+                    .trim()
+                    .replace(/\s+/g, ' ')
+                    .replace(/[^\w\s\u0600-\u06FF]/g, ''); // Keep Arabic and English characters
+            }
+
+            // Helper function to check if coordinates are very close (within ~10 meters) (shared function)
+            function areCoordinatesCloseForComparison(lat1, lng1, lat2, lng2) {
+                // Approximately 0.0001 degrees = ~11 meters
+                const threshold = 0.0001;
+                return Math.abs(lat1 - lat2) < threshold && Math.abs(lng1 - lng2) < threshold;
+            }
+
+            // Helper function to check if branch exists in Jahez
+            function isBranchInJahez(branch) {
+                // Check by farq_source_id (most reliable)
+                if (branch.farq_source_id && jahezSourceIds.has(branch.farq_source_id)) {
+                    return true;
+                }
+
+                // Check by external_source_id
+                if (branch.external_source_id) {
+                    const externalIdStr = branch.external_source_id.toString();
+                    if (jahezExternalIds.has(externalIdStr)) {
+                        return true;
+                    }
+                }
+
+                // Check by matching in branchMatches (if already matched via farq_source_id)
+                if (branch.farq_source_id) {
+                    const match = branchMatches.get(branch.farq_source_id);
+                    if (match && match.sources.jahez && match.sources.jahez.length > 0) {
+                        return true;
+                    }
+                }
+
+                // Check by matching in branchMatches (via sourceType_id key)
+                const sourceType = getSourceType(branch.provider_name || branch.source);
+                const matchKey = `${sourceType}_${branch.id}`;
+                const match = branchMatches.get(matchKey);
+                if (match && match.sources.jahez && match.sources.jahez.length > 0) {
+                    return true;
+                }
+
+                // Check if any Jahez branch has the same external_source_id or id
+                // (only if the competitor branch doesn't have farq_source_id)
+                if (!branch.farq_source_id) {
+                    // Check by external_source_id against Jahez branches
+                    if (branch.external_source_id) {
+                        const hasMatchingExternalId = allBranches.jahez.some(jahezBranch =>
+                            jahezBranch.external_source_id &&
+                            jahezBranch.external_source_id.toString() === branch.external_source_id.toString()
+                        );
+                        if (hasMatchingExternalId) {
+                            return true;
+                        }
+                    }
+                }
+
+                // Check by name (100% match) and coordinates (very close)
+                if (branch.name && branch.lat && branch.lng) {
+                    const normalizedBranchName = normalizeNameForComparison(branch.name);
+                    if (normalizedBranchName) {
+                        const hasMatchingNameAndLocation = allBranches.jahez.some(jahezBranch => {
+                            if (!jahezBranch.name || !jahezBranch.lat || !jahezBranch.lng) {
+                                return false;
+                            }
+                            const normalizedJahezName = normalizeNameForComparison(jahezBranch.name);
+                            const nameMatch = normalizedBranchName === normalizedJahezName;
+                            const locationMatch = areCoordinatesCloseForComparison(
+                                branch.lat, branch.lng,
+                                jahezBranch.lat, jahezBranch.lng
+                            );
+                            return nameMatch && locationMatch;
+                        });
+                        if (hasMatchingNameAndLocation) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+
+            let missingFromJahez = 0;
+            const branchesNotInJahez = [];
+            [...allBranches.chefs, ...allBranches.hungerstation, ...allBranches.toyou].forEach(branch => {
+                if (!isBranchInJahez(branch)) {
+                    missingFromJahez++;
+                    branchesNotInJahez.push(branch);
+                }
+            });
+
+            setTextContent('jahez-gaps-count', missingFromJahez.toLocaleString());
+
+            // Calculate market share and other metrics
+            const marketShare = total > 0 ? Math.round((allBranches.jahez.length / total) * 100) : 0;
+            const coverageGaps = total > 0 ? Math.round((1 - missingFromJahez / total) * 100) : 0;
+            const primePenetration = allBranches.jahez.length > 0 ? Math.round((jahezPrimeCount / allBranches.jahez.length) * 100) : 0;
+
+            // Calculate Competitive Index based on actual metrics
+            // Formula: (Market Share * 0.4) + (Coverage * 0.3) + (Prime Penetration * 0.2) + (Multi-Source * 0.1)
+            const coverageScore = coverageGaps;
+            const multiSourceScore = total > 0 ? Math.round((multiSource / total) * 100) : 0;
+            const competitiveIndex = Math.round(
+                (marketShare * 0.4) +
+                (coverageScore * 0.3) +
+                (primePenetration * 0.2) +
+                (Math.min(multiSourceScore, 100) * 0.1)
+            );
+
+            // Market Position Index (same as Competitive Index)
+            const marketIndex = competitiveIndex;
+
+            // Update Executive Summary
+            setTextContent('expansion-opportunity', missingFromJahez.toLocaleString());
+            setTextContent('prime-potential', (jahezPrimeCount + hungerstationPrimeCount).toLocaleString());
+            setTextContent('market-index', marketIndex);
+            setTextContent('competitive-index', competitiveIndex);
+
+            // Update KPI
+            setTextContent('market-share', marketShare + '%');
+            setTextContent('coverage-gaps', coverageGaps + '%');
+            setTextContent('prime-penetration', primePenetration + '%');
+            setTextContent('competitive-gap', missingFromJahez.toLocaleString());
+            setTextContent('exclusive-jahez', exclusiveJahez.toLocaleString());
+
+            // Update Performance Metrics
+            const coverageEffProg = document.getElementById('coverage-efficiency-progress');
+            const coverageEffText = document.getElementById('coverage-efficiency-text');
+            const marketPenProg = document.getElementById('market-penetration-progress');
+            const marketPenText = document.getElementById('market-penetration-text');
+            const compIndexProg = document.getElementById('competitive-index-progress');
+            const compIndexText = document.getElementById('competitive-index-text');
+
+            if (coverageEffProg) coverageEffProg.style.width = coverageGaps + '%';
+            if (coverageEffText) coverageEffText.textContent = coverageGaps + '%';
+            if (marketPenProg) marketPenProg.style.width = marketShare + '%';
+            if (marketPenText) marketPenText.textContent = marketShare + '%';
+            if (compIndexProg) compIndexProg.style.width = competitiveIndex + '%';
+            if (compIndexText) compIndexText.textContent = competitiveIndex + '%';
+
+            // Update Quick Insights
+            updateQuickInsights(missingFromJahez, jahezPrimeCount + hungerstationPrimeCount, multiSource);
+
+            // Update filter counts
+            updateFilterCounts();
+
+            // Update summary bar
+            updateSummaryBar();
+
+            // Update lists
+            updateBranchesNotInJahezList(branchesNotInJahez);
+            updatePrimeOpportunitiesList('all');
+            updateTopExpansionList(branchesNotInJahez);
+
+            // Update City Breakdown and Ratings
+            updateCityBreakdown();
+            updateRatingsComparison();
+            updateAverageRating();
+
+            // Update Platform Comparison Metrics
+            updatePlatformComparisonMetrics();
+
+            console.log('Statistics updated:', {
+                total: total,
+                multiSource: multiSource,
+                jahezGaps: missingFromJahez,
+                jahezPrime: jahezPrimeCount,
+                hungerstationPrime: hungerstationPrimeCount,
+                totalPrime: jahezPrimeCount + hungerstationPrimeCount
+            });
+        }
+
+        // Update Quick Insights
+        function updateQuickInsights(expansion, prime, multi) {
+            const setTextContent = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            };
+            setTextContent('insight-expansion', expansion.toLocaleString());
+            setTextContent('insight-prime', prime.toLocaleString());
+            setTextContent('insight-multi', multi.toLocaleString());
+        }
+
+        // Update filter counts
+        function updateFilterCounts() {
+            const setTextContent = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            };
+
+            // Platform counts
+            setTextContent('count-jahez', allBranches.jahez.length.toLocaleString());
+            setTextContent('count-hungerstation', allBranches.hungerstation.length.toLocaleString());
+            setTextContent('count-chefs', allBranches.chefs.length.toLocaleString());
+            setTextContent('count-toyou', allBranches.toyou.length.toLocaleString());
+
+            // Calculate not in Jahez
+            const jahezSourceIds = new Set(
+                allBranches.jahez
+                    .filter(b => b.farq_source_id)
+                    .map(b => b.farq_source_id)
+            );
+            let notInJahez = 0;
+            [...allBranches.chefs, ...allBranches.hungerstation, ...allBranches.toyou].forEach(branch => {
+                if (branch.farq_source_id && !jahezSourceIds.has(branch.farq_source_id)) {
+                    notInJahez++;
+                } else if (!branch.farq_source_id) {
+                    notInJahez++;
+                }
+            });
+            setTextContent('count-not-jahez', notInJahez.toLocaleString());
+
+            // Prime opportunities (branches with prime in competitors but not in Jahez)
+            let primeOpportunities = 0;
+            [...allBranches.chefs, ...allBranches.hungerstation].forEach(branch => {
+                const sourceType = getSourceType(branch.provider_name);
+                if (hasPrimeSubscription({ ...branch, sourceType }) &&
+                    (!branch.farq_source_id || !jahezSourceIds.has(branch.farq_source_id))) {
+                    primeOpportunities++;
+                }
+            });
+            setTextContent('count-prime-opportunities', primeOpportunities.toLocaleString());
+
+            // Quick wins and at-risk (branches with 2+ or 3+ competitors)
+            let quickWins = 0;
+            let atRisk = 0;
+            branchMatches.forEach(match => {
+                const sourcesCount = Object.keys(match.sources).length;
+                if (sourcesCount >= 2 && !match.sources.jahez) {
+                    quickWins++;
+                }
+                if (sourcesCount >= 3 && !match.sources.jahez) {
+                    atRisk++;
+                }
+            });
+            setTextContent('count-quick-wins', quickWins.toLocaleString());
+            setTextContent('count-at-risk', atRisk.toLocaleString());
+
+            // Branch types
+            let multiSourceCount = 0;
+            let exclusiveJahez = 0;
+            branchMatches.forEach(match => {
+                const sourcesCount = Object.keys(match.sources).length;
+                if (sourcesCount > 1) {
+                    multiSourceCount++;
+                }
+                if (sourcesCount === 1 && match.sources.jahez) {
+                    exclusiveJahez++;
+                }
+            });
+            setTextContent('count-multi-source', multiSourceCount.toLocaleString());
+            setTextContent('count-exclusive-jahez', exclusiveJahez.toLocaleString());
+
+            // Ratings
+            let highRated = 0;
+            let lowRated = 0;
+            [...allBranches.jahez, ...allBranches.chefs, ...allBranches.hungerstation, ...allBranches.toyou].forEach(branch => {
+                if (branch.rating) {
+                    const rating = parseFloat(branch.rating);
+                    if (rating >= 4.0) highRated++;
+                    if (rating < 3.0) lowRated++;
+                }
+            });
+            setTextContent('count-high-rated', highRated.toLocaleString());
+            setTextContent('count-low-rated', lowRated.toLocaleString());
+        }
+
+        // Update summary bar
+        function updateSummaryBar() {
+            const setTextContent = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            };
+
+            const totalAll = allBranches.jahez.length + allBranches.chefs.length +
+                allBranches.hungerstation.length + allBranches.toyou.length;
+
+            setTextContent('summary-total-all', totalAll.toLocaleString());
+
+            // These will be updated by updateFilters
+            setTextContent('summary-total', '0');
+            setTextContent('summary-opportunities', '0');
+
+            // Prime count
+            let primeCount = 0;
+            allBranches.jahez.forEach(branch => {
+                if (hasPrimeSubscription({ ...branch, sourceType: 'jahez' })) {
+                    primeCount++;
+                }
+            });
+            allBranches.hungerstation.forEach(branch => {
+                if (hasPrimeSubscription({ ...branch, sourceType: 'hungerstation' })) {
+                    primeCount++;
+                }
+            });
+            setTextContent('summary-prime', primeCount.toLocaleString());
+
+            // Multi-source count
+            let multiSourceCount = 0;
+            branchMatches.forEach(match => {
+                if (Object.keys(match.sources).length > 1) {
+                    multiSourceCount++;
+                }
+            });
+            setTextContent('summary-multi-source', multiSourceCount.toLocaleString());
+        }
+
+        // Reset filters
+        function resetFilters() {
+            document.getElementById('filter-jahez').checked = true;
+            document.getElementById('filter-hungerstation').checked = false;
+            document.getElementById('filter-chefs').checked = false;
+            document.getElementById('filter-toyou').checked = false;
+            document.getElementById('filter-not-jahez').checked = false;
+            document.getElementById('filter-prime-opportunities').checked = false;
+            document.getElementById('filter-quick-wins').checked = false;
+            document.getElementById('filter-at-risk').checked = false;
+            document.getElementById('filter-multi-source').checked = false;
+            document.getElementById('filter-exclusive-jahez').checked = false;
+            document.getElementById('filter-high-rated').checked = false;
+            document.getElementById('filter-low-rated').checked = false;
+            document.getElementById('filter-prime-only').checked = false;
+            document.getElementById('show-clusters').checked = true;
+            updateFilters();
+        }
+
+        // Create statistics charts
+        function createCharts() {
+            // Destroy existing charts
+            Object.values(charts).forEach(chart => chart?.destroy());
+
+            // Sources chart
+            charts.sources = new Chart(document.getElementById('sourcesChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Jahez', 'A', 'B', 'C'],
+                    datasets: [{
+                        data: [
+                            allBranches.jahez.length,
+                            allBranches.hungerstation.length,
+                            allBranches.chefs.length,
+                            allBranches.toyou.length
+                        ],
+                        backgroundColor: ['#4CAF50', '#FF9800', '#2196F3', '#9C27B0']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+
+            // Prime subscriptions chart
+            charts.prime = new Chart(document.getElementById('primeChart'), {
+                type: 'bar',
+                data: {
+                    labels: ['Jahez', 'A'],
+                    datasets: [{
+                        label: 'Prime Subscriptions',
+                        data: [
+                            primeSubscriptions.jahez.size,
+                            primeSubscriptions.hungerstation.size
+                        ],
+                        backgroundColor: ['#2d7a4f', '#1e5738']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Coverage chart
+            let inAllSources = 0;
+            let inTwoSources = 0;
+            let inOneSource = 0;
+
+            branchMatches.forEach(match => {
+                const sourcesCount = Object.keys(match.sources).length;
+                if (sourcesCount >= 3) {
+                    inAllSources++;
+                } else if (sourcesCount === 2) {
+                    inTwoSources++;
+                } else {
+                    inOneSource++;
+                }
+            });
+
+            charts.coverage = new Chart(document.getElementById('coverageChart'), {
+                type: 'pie',
+                data: {
+                    labels: ['Single Source', 'Two Sources', 'Three+ Sources'],
+                    datasets: [{
+                        data: [inOneSource, inTwoSources, inAllSources],
+                        backgroundColor: ['#e3f2fd', '#81c784', '#2d7a4f']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+
+            // Comparison chart
+            charts.comparison = new Chart(document.getElementById('comparisonChart'), {
+                type: 'bar',
+                data: {
+                    labels: ['Jahez', 'A', 'B', 'C'],
+                    datasets: [{
+                        label: 'Total Branches',
+                        data: [
+                            allBranches.jahez.length,
+                            allBranches.hungerstation.length,
+                            allBranches.chefs.length,
+                            allBranches.toyou.length
+                        ],
+                        backgroundColor: ['#4CAF50', '#FF9800', '#2196F3', '#9C27B0']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Market Share chart
+            const totalBranches = allBranches.jahez.length + allBranches.hungerstation.length +
+                allBranches.chefs.length + allBranches.toyou.length;
+            const jahezShare = totalBranches > 0 ? (allBranches.jahez.length / totalBranches * 100) : 0;
+            const competitorsShare = 100 - jahezShare;
+
+            const marketShareCanvas = document.getElementById('marketShareChart');
+            if (marketShareCanvas) {
+                charts.marketShare = new Chart(marketShareCanvas, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Jahez', 'Competitors'],
+                        datasets: [{
+                            data: [jahezShare, competitorsShare],
+                            backgroundColor: ['#4CAF50', '#666']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function (context) {
+                                        return context.label + ': ' + context.parsed.toFixed(1) + '%';
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    plugins: [{
+                        id: 'centerText',
+                        beforeDraw: function (chart) {
+                            const ctx = chart.ctx;
+                            const centerX = chart.chartArea.left + (chart.chartArea.right - chart.chartArea.left) / 2;
+                            const centerY = chart.chartArea.top + (chart.chartArea.bottom - chart.chartArea.top) / 2;
+                            ctx.save();
+                            ctx.font = 'bold 24px Arial';
+                            ctx.fillStyle = '#e0e0e0';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText(Math.round(jahezShare) + '%', centerX, centerY);
+                            ctx.restore();
+                        }
+                    }]
+                });
+            }
+
+            // Coverage Gap Analysis chart
+            const jahezSourceIds = new Set(
+                allBranches.jahez
+                    .filter(b => b.farq_source_id)
+                    .map(b => b.farq_source_id)
+            );
+            let gapsCount = 0;
+            [...allBranches.chefs, ...allBranches.hungerstation, ...allBranches.toyou].forEach(branch => {
+                if (branch.farq_source_id && !jahezSourceIds.has(branch.farq_source_id)) {
+                    gapsCount++;
+                } else if (!branch.farq_source_id) {
+                    gapsCount++;
+                }
+            });
+
+            const gapCanvas = document.getElementById('gapChart');
+            if (gapCanvas) {
+                charts.gap = new Chart(gapCanvas, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Gaps', 'Covered'],
+                        datasets: [{
+                            label: 'Branches',
+                            data: [gapsCount, allBranches.jahez.length],
+                            backgroundColor: ['#FF9800', '#4CAF50']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    title: function () {
+                                        return 'Coverage Gap Analysis';
+                                    },
+                                    afterTitle: function () {
+                                        return gapsCount + ' Total Gaps';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Display branches on map using GeoJSON
+        function displayBranches() {
+            if (!layersAdded) {
+                addGeoJSONLayers();
+                layersAdded = true;
+            }
+
+            updateLayerFiltersWithIntersection();
+        }
+
+        // إضافة طبقات GeoJSON للخريطة
+        function addGeoJSONLayers() {
+            const sources = ['jahez', 'chefs', 'hungerstation', 'toyou'];
+            const colors = {
+                'jahez': '#4CAF50',
+                'chefs': '#2196F3',
+                'hungerstation': '#FF9800',
+                'toyou': '#9C27B0'
+            };
+
+            sources.forEach(source => {
+                // تحويل البيانات إلى GeoJSON
+                const geojson = {
+                    type: 'FeatureCollection',
+                    features: allBranches[source].map(branch => {
+                        const matches = getBranchMatches(branch);
+                        const sourcesCount = Object.keys(matches.sources).length;
+                        const isPrime = hasPrimeSubscription({ ...branch, sourceType: source });
+
+                        return {
+                            type: 'Feature',
+                            geometry: {
+                                type: 'Point',
+                                coordinates: [branch.lng, branch.lat]
+                            },
+                            properties: {
+                                ...branch,
+                                sourceType: source,
+                                sourcesCount: sourcesCount,
+                                isMultiSource: sourcesCount > 1,
+                                isPrime: isPrime
+                            }
+                        };
+                    })
+                };
+
+                // إضافة المصدر
+                map.addSource(source + '-source', {
+                    type: 'geojson',
+                    data: geojson,
+                    cluster: true,
+                    clusterMaxZoom: 14,
+                    clusterRadius: 50
+                });
+
+                // طبقة التجميعات (Clusters)
+                map.addLayer({
+                    id: source + '-clusters',
+                    type: 'circle',
+                    source: source + '-source',
+                    filter: ['has', 'point_count'],
+                    paint: {
+                        'circle-color': colors[source],
+                        'circle-radius': [
+                            'step',
+                            ['get', 'point_count'],
+                            15, 10,
+                            20, 50,
+                            25, 100,
+                            30
+                        ],
+                        'circle-opacity': 0.8,
+                        'circle-stroke-width': 2,
+                        'circle-stroke-color': '#fff'
+                    }
+                });
+
+                // طبقة أرقام التجميعات
+                map.addLayer({
+                    id: source + '-cluster-count',
+                    type: 'symbol',
+                    source: source + '-source',
+                    filter: ['has', 'point_count'],
+                    layout: {
+                        'text-field': '{point_count_abbreviated}',
+                        'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+                        'text-size': 12
+                    },
+                    paint: {
+                        'text-color': '#ffffff'
+                    }
+                });
+
+                // طبقة النقاط الفردية
+                map.addLayer({
+                    id: source + '-unclustered',
+                    type: 'circle',
+                    source: source + '-source',
+                    filter: ['!', ['has', 'point_count']],
+                    paint: {
+                        'circle-color': colors[source],
+                        'circle-radius': [
+                            'case',
+                            ['get', 'isPrime'], 8,
+                            ['get', 'isMultiSource'], 7,
+                            5
+                        ],
+                        'circle-stroke-width': [
+                            'case',
+                            ['get', 'isPrime'], 3,
+                            ['get', 'isMultiSource'], 3,
+                            2
+                        ],
+                        'circle-stroke-color': [
+                            'case',
+                            ['get', 'isPrime'], '#FFD700',
+                            ['get', 'isMultiSource'], '#FFD700',
+                            '#ffffff'
+                        ],
+                        'circle-opacity': [
+                            'case',
+                            ['get', 'isPrime'], 1,
+                            0.9
+                        ]
+                    }
+                });
+
+                // النقر على التجميعات للتكبير
+                map.on('click', source + '-clusters', (e) => {
+                    const features = map.queryRenderedFeatures(e.point, {
+                        layers: [source + '-clusters']
+                    });
+                    const clusterId = features[0].properties.cluster_id;
+                    map.getSource(source + '-source').getClusterExpansionZoom(
+                        clusterId,
+                        (err, zoom) => {
+                            if (err) return;
+                            map.easeTo({
+                                center: features[0].geometry.coordinates,
+                                zoom: zoom
+                            });
+                        }
+                    );
+                });
+
+                // Show detail sidebar on point click
+                map.on('click', source + '-unclustered', (e) => {
+                    const coordinates = e.features[0].geometry.coordinates.slice();
+                    const props = e.features[0].properties;
+
+                    const branch = {
+                        ...props,
+                        sourceType: source
+                    };
+
+                    showBranchDetail(branch);
+                });
+
+                // تغيير المؤشر عند التمرير
+                map.on('mouseenter', source + '-clusters', () => {
+                    map.getCanvas().style.cursor = 'pointer';
+                });
+                map.on('mouseleave', source + '-clusters', () => {
+                    map.getCanvas().style.cursor = '';
+                });
+                map.on('mouseenter', source + '-unclustered', () => {
+                    map.getCanvas().style.cursor = 'pointer';
+                });
+                map.on('mouseleave', source + '-unclustered', () => {
+                    map.getCanvas().style.cursor = '';
+                });
+            });
+        }
+
+        // تحديث الفلاتر - النسخة القديمة (OR logic)
+        function updateLayerFilters() {
+            const filters = {
+                jahez: document.getElementById('filter-jahez').checked,
+                chefs: document.getElementById('filter-chefs').checked,
+                hungerstation: document.getElementById('filter-hungerstation').checked,
+                toyou: document.getElementById('filter-toyou').checked
+            };
+
+            Object.keys(filters).forEach(source => {
+                const visibility = filters[source] ? 'visible' : 'none';
+                if (map.getLayer(source + '-clusters')) {
+                    map.setLayoutProperty(source + '-clusters', 'visibility', visibility);
+                    map.setLayoutProperty(source + '-cluster-count', 'visibility', visibility);
+                    map.setLayoutProperty(source + '-unclustered', 'visibility', visibility);
+                }
+            });
+        }
+
+        // Helper function to normalize name for comparison
+        function normalizeNameForComparison(name) {
+            if (!name) return '';
+            return name.toString()
+                .toLowerCase()
+                .trim()
+                .replace(/\s+/g, ' ')
+                .replace(/[^\w\s\u0600-\u06FF]/g, ''); // Keep Arabic and English characters
+        }
+
+        // Helper function to check if coordinates are very close (within ~10 meters)
+        function areCoordinatesCloseForComparison(lat1, lng1, lat2, lng2) {
+            // Approximately 0.0001 degrees = ~11 meters
+            const threshold = 0.0001;
+            return Math.abs(lat1 - lat2) < threshold && Math.abs(lng1 - lng2) < threshold;
+        }
+
+        // Helper function to check if branch exists in Jahez (for map filters)
+        function isBranchInJahezForFilter(branch) {
+            // Check by farq_source_id
+            const jahezSourceIds = new Set(
+                allBranches.jahez
+                    .filter(b => b.farq_source_id)
+                    .map(b => b.farq_source_id)
+            );
+
+            if (branch.farq_source_id && jahezSourceIds.has(branch.farq_source_id)) {
+                return true;
+            }
+
+            // Check by external_source_id
+            const jahezExternalIds = new Set(
+                allBranches.jahez
+                    .filter(b => b.external_source_id)
+                    .map(b => b.external_source_id.toString())
+            );
+
+            if (branch.external_source_id && jahezExternalIds.has(branch.external_source_id.toString())) {
+                return true;
+            }
+
+            // Check by matching in branchMatches
+            let match = null;
+            const possibleKeys = [
+                branch.farq_source_id,
+                `jahez_${branch.external_source_id || branch.id}`,
+                `chefs_${branch.id}`,
+                `hungerstation_${branch.id}`,
+                `toyou_${branch.id}`
+            ];
+
+            for (const key of possibleKeys) {
+                if (key && branchMatches.has(key)) {
+                    match = branchMatches.get(key);
+                    break;
+                }
+            }
+
+            if (match && match.sources.jahez && match.sources.jahez.length > 0) {
+                return true;
+            }
+
+            // Check by name (100% match) and coordinates (very close)
+            if (branch.name && branch.lat && branch.lng) {
+                const normalizedBranchName = normalizeNameForComparison(branch.name);
+                if (normalizedBranchName) {
+                    const hasMatchingNameAndLocation = allBranches.jahez.some(jahezBranch => {
+                        if (!jahezBranch.name || !jahezBranch.lat || !jahezBranch.lng) {
+                            return false;
+                        }
+                        const normalizedJahezName = normalizeNameForComparison(jahezBranch.name);
+                        const nameMatch = normalizedBranchName === normalizedJahezName;
+                        const locationMatch = areCoordinatesCloseForComparison(
+                            branch.lat, branch.lng,
+                            jahezBranch.lat, jahezBranch.lng
+                        );
+                        return nameMatch && locationMatch;
+                    });
+                    if (hasMatchingNameAndLocation) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // دالة مساعدة للحصول على معلومات المطابقة للفرع
+        function getBranchMatchInfo(branch, source) {
+            let match = null;
+            const possibleKeys = [
+                branch.farq_source_id,
+                `${source}_${branch.id}`,
+                `jahez_${branch.external_source_id || branch.id}`,
+                `chefs_${branch.id}`,
+                `hungerstation_${branch.id}`,
+                `toyou_${branch.id}`
+            ];
+
+            for (const key of possibleKeys) {
+                if (key && branchMatches.has(key)) {
+                    match = branchMatches.get(key);
+                    break;
+                }
+            }
+
+            const matchSources = match ? Object.keys(match.sources) : [source];
+            const sourcesCount = matchSources.length;
+
+            // Use enhanced check for isNotInJahez
+            let isNotInJahez = false;
+            if (source === 'jahez') {
+                isNotInJahez = false;
+            } else {
+                // Check if branch exists in Jahez using enhanced logic
+                isNotInJahez = !isBranchInJahezForFilter(branch);
+            }
+
+            const isMultiSource = sourcesCount > 1;
+            const isExclusiveJahez = sourcesCount === 1 && match && match.sources.jahez;
+            const isPrime = hasPrimeSubscription({ ...branch, sourceType: source });
+
+            return {
+                match,
+                matchSources,
+                sourcesCount,
+                isNotInJahez,
+                isMultiSource,
+                isExclusiveJahez,
+                isPrime
+            };
+        }
+
+        // دالة للتحقق من تطابق الفرع مع فلاتر التوسع والفرص
+        function matchesExpansionFilters(info, filters) {
+            const {
+                notInJahezFilter,
+                primeOpportunitiesFilter,
+                quickWinsFilter,
+                atRiskFilter
+            } = filters;
+
+            // إذا لم يتم تفعيل أي فلتر توسع، اقبل جميع الفروع
+            if (!notInJahezFilter && !primeOpportunitiesFilter && !quickWinsFilter && !atRiskFilter) {
+                return true;
+            }
+
+            // تطبيق الفلاتر المفعلة (AND logic - يجب أن يطابق جميع الفلاتر المفعلة)
+            // فلتر Not in Jahez
+            if (notInJahezFilter && !info.isNotInJahez) {
+                return false;
+            }
+
+            // فلتر Quick Wins (2+ competitors وليس في Jahez)
+            if (quickWinsFilter) {
+                if (!info.isNotInJahez || info.sourcesCount < 2) {
+                    return false;
+                }
+            }
+
+            // فلتر At-Risk (3+ competitors وليس في Jahez)
+            if (atRiskFilter) {
+                if (!info.isNotInJahez || info.sourcesCount < 3) {
+                    return false;
+                }
+            }
+
+            // فلتر Prime Opportunities (ليس في Jahez ولديه Prime في المنافسين)
+            if (primeOpportunitiesFilter) {
+                if (!info.isNotInJahez) {
+                    return false;
+                }
+                // التحقق من وجود Prime في المنافسين
+                let hasPrimeInCompetitors = false;
+                if (info.match) {
+                    Object.keys(info.match.sources).forEach(src => {
+                        if (src !== 'jahez') {
+                            info.match.sources[src].forEach(b => {
+                                if (hasPrimeSubscription({ ...b, sourceType: src })) {
+                                    hasPrimeInCompetitors = true;
+                                }
+                            });
+                        }
+                    });
+                }
+                if (!hasPrimeInCompetitors) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // دالة للتحقق من تطابق الفرع مع فلاتر أنواع الفروع
+        function matchesBranchTypeFilters(info, filters) {
+            const { multiSourceFilter, exclusiveJahezFilter } = filters;
+
+            // إذا لم يتم تفعيل أي فلتر نوع، اقبل جميع الفروع
+            if (!multiSourceFilter && !exclusiveJahezFilter) {
+                return true;
+            }
+
+            // تطبيق الفلاتر المفعلة (OR logic - إذا تم تفعيل أكثر من فلتر، يجب أن يطابق أحدها على الأقل)
+            // لكن في هذه الحالة، الفلاتر متنافية (فرع لا يمكن أن يكون Multi-Source و Exclusive Jahez في نفس الوقت)
+            // لذا نستخدم AND logic
+
+            // إذا تم تفعيل Multi-Source فقط
+            if (multiSourceFilter && !exclusiveJahezFilter) {
+                return info.isMultiSource;
+            }
+
+            // إذا تم تفعيل Exclusive Jahez فقط
+            if (exclusiveJahezFilter && !multiSourceFilter) {
+                return info.isExclusiveJahez;
+            }
+
+            // إذا تم تفعيل كليهما، يجب أن يكون أحدهما صحيحاً (OR)
+            if (multiSourceFilter && exclusiveJahezFilter) {
+                return info.isMultiSource || info.isExclusiveJahez;
+            }
+
+            return true;
+        }
+
+        // دالة للتحقق من تطابق الفرع مع فلاتر التقييم
+        function matchesRatingFilters(branch, filters) {
+            const { highRatedFilter, lowRatedFilter } = filters;
+
+            // إذا لم يتم تفعيل أي فلتر تقييم، اقبل جميع الفروع
+            if (!highRatedFilter && !lowRatedFilter) {
+                return true;
+            }
+
+            // إذا لم يكن هناك تقييم، استبعد من الفلاتر التي تتطلب تقييم
+            if (!branch.rating) {
+                return false;
+            }
+
+            const rating = parseFloat(branch.rating);
+
+            // فلتر High Rated (≥4.0)
+            if (highRatedFilter && rating < 4.0) {
+                return false;
+            }
+
+            // فلتر Low Rated (<3.0)
+            if (lowRatedFilter && rating >= 3.0) {
+                return false;
+            }
+
+            return true;
+        }
+
+        // تحديث الفلاتر بمنطق محسّن ومنظم
+        function updateLayerFiltersWithIntersection() {
+            // قراءة حالة الفلاتر
+            const platformFilters = {
+                jahez: document.getElementById('filter-jahez').checked,
+                chefs: document.getElementById('filter-chefs').checked,
+                hungerstation: document.getElementById('filter-hungerstation').checked,
+                toyou: document.getElementById('filter-toyou').checked
+            };
+
+            const expansionFilters = {
+                notInJahezFilter: document.getElementById('filter-not-jahez').checked,
+                primeOpportunitiesFilter: document.getElementById('filter-prime-opportunities').checked,
+                quickWinsFilter: document.getElementById('filter-quick-wins').checked,
+                atRiskFilter: document.getElementById('filter-at-risk').checked
+            };
+
+            const branchTypeFilters = {
+                multiSourceFilter: document.getElementById('filter-multi-source').checked,
+                exclusiveJahezFilter: document.getElementById('filter-exclusive-jahez').checked
+            };
+
+            const ratingFilters = {
+                highRatedFilter: document.getElementById('filter-high-rated').checked,
+                lowRatedFilter: document.getElementById('filter-low-rated').checked
+            };
+
+            const primeOnlyFilter = document.getElementById('filter-prime-only').checked;
+
+            // الحصول على المنصات المحددة
+            const selectedSources = Object.keys(platformFilters).filter(source => platformFilters[source]);
+
+            // إذا لم يتم تحديد أي منصة، إخفاء كل شيء
+            if (selectedSources.length === 0) {
+                Object.keys(platformFilters).forEach(source => {
+                    if (map.getLayer(source + '-clusters')) {
+                        map.setLayoutProperty(source + '-clusters', 'visibility', 'none');
+                        map.setLayoutProperty(source + '-cluster-count', 'visibility', 'none');
+                        map.setLayoutProperty(source + '-unclustered', 'visibility', 'none');
+                    }
+                });
+                updateSummaryBarCounts(0, 0);
+                return;
+            }
+
+            // إخفاء جميع الطبقات أولاً وإفراغ البيانات
+            Object.keys(platformFilters).forEach(sourceType => {
+                if (!map.getLayer(sourceType + '-clusters')) return;
+                map.setLayoutProperty(sourceType + '-clusters', 'visibility', 'none');
+                map.setLayoutProperty(sourceType + '-cluster-count', 'visibility', 'none');
+                map.setLayoutProperty(sourceType + '-unclustered', 'visibility', 'none');
+
+                // إفراغ بيانات المصادر غير المحددة
+                if (!selectedSources.includes(sourceType)) {
+                    if (map.getSource(sourceType + '-source')) {
+                        map.getSource(sourceType + '-source').setData({
+                            type: 'FeatureCollection',
+                            features: []
+                        });
+                    }
+                }
+            });
+
+            // جمع الفروع المطابقة
+            const matchingBranches = {
+                jahez: [],
+                chefs: [],
+                hungerstation: [],
+                toyou: []
+            };
+
+            let opportunitiesCount = 0;
+
+            // تطبيق الفلاتر على كل فرع من المصادر المحددة فقط
+            selectedSources.forEach(source => {
+                allBranches[source].forEach(branch => {
+                    // الحصول على معلومات المطابقة
+                    const info = getBranchMatchInfo(branch, source);
+
+                    // تطبيق الفلاتر بالترتيب (AND logic بين المجموعات)
+                    // 1. فلتر Prime Only
+                    if (primeOnlyFilter && !info.isPrime) {
+                        return;
+                    }
+
+                    // 2. فلاتر التوسع والفرص
+                    if (!matchesExpansionFilters(info, expansionFilters)) {
+                        return;
+                    }
+
+                    // 3. فلاتر أنواع الفروع
+                    if (!matchesBranchTypeFilters(info, branchTypeFilters)) {
+                        return;
+                    }
+
+                    // 4. فلاتر التقييم
+                    if (!matchesRatingFilters(branch, ratingFilters)) {
+                        return;
+                    }
+
+                    // إذا مر الفرع بجميع الفلاتر، أضفه للنتائج
+                    matchingBranches[source].push(branch);
+
+                    // عد الفرص
+                    if (info.isNotInJahez) {
+                        opportunitiesCount++;
+                    }
+                });
+            });
+
+            // حساب العدد الإجمالي
+            const totalDisplayed = matchingBranches.jahez.length +
+                matchingBranches.chefs.length +
+                matchingBranches.hungerstation.length +
+                matchingBranches.toyou.length;
+
+            // تحديث الطبقات على الخريطة - فقط للمصادر المحددة
+            selectedSources.forEach(source => {
+                const geojson = {
+                    type: 'FeatureCollection',
+                    features: matchingBranches[source].map(branch => {
+                        const info = getBranchMatchInfo(branch, source);
+                        return {
+                            type: 'Feature',
+                            geometry: {
+                                type: 'Point',
+                                coordinates: [branch.lng, branch.lat]
+                            },
+                            properties: {
+                                ...branch,
+                                sourceType: source,
+                                sourcesCount: info.sourcesCount,
+                                isMultiSource: info.isMultiSource,
+                                isPrime: info.isPrime
+                            }
+                        };
+                    })
+                };
+
+                if (map.getSource(source + '-source')) {
+                    map.getSource(source + '-source').setData(geojson);
+
+                    if (matchingBranches[source].length > 0) {
+                        map.setLayoutProperty(source + '-clusters', 'visibility', 'visible');
+                        map.setLayoutProperty(source + '-cluster-count', 'visibility', 'visible');
+                        map.setLayoutProperty(source + '-unclustered', 'visibility', 'visible');
+                    } else {
+                        // التأكد من إخفاء الطبقات إذا لم تكن هناك فروع
+                        map.setLayoutProperty(source + '-clusters', 'visibility', 'none');
+                        map.setLayoutProperty(source + '-cluster-count', 'visibility', 'none');
+                        map.setLayoutProperty(source + '-unclustered', 'visibility', 'none');
+                    }
+                }
+            });
+
+            // التأكد من إخفاء جميع المصادر غير المحددة
+            Object.keys(platformFilters).forEach(sourceType => {
+                if (!selectedSources.includes(sourceType)) {
+                    if (map.getLayer(sourceType + '-clusters')) {
+                        map.setLayoutProperty(sourceType + '-clusters', 'visibility', 'none');
+                        map.setLayoutProperty(sourceType + '-cluster-count', 'visibility', 'none');
+                        map.setLayoutProperty(sourceType + '-unclustered', 'visibility', 'none');
+                    }
+                }
+            });
+
+            // تحديث شريط الملخص
+            updateSummaryBarCounts(totalDisplayed, opportunitiesCount);
+        }
+
+        // Update summary bar counts
+        function updateSummaryBarCounts(total, opportunities) {
+            const setTextContent = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            };
+            setTextContent('summary-total', total.toLocaleString());
+            setTextContent('summary-opportunities', opportunities.toLocaleString());
+        }
+
+        // Show branch detail in right sidebar
+        function showBranchDetail(branch) {
+            document.getElementById('detail-placeholder').style.display = 'none';
+            const detailDiv = document.getElementById('branch-detail');
+            detailDiv.classList.add('active');
+
+            const matches = getBranchMatches(branch);
+            const sourcesCount = Object.keys(matches.sources).length;
+            const isPrime = hasPrimeSubscription(branch);
+
+            const colors = {
+                'jahez': '#4CAF50',
+                'chefs': '#2196F3',
+                'hungerstation': '#FF9800',
+                'toyou': '#9C27B0'
+            };
+
+            const sourceNames = {
+                'jahez': 'Jahez',
+                'chefs': 'B',
+                'hungerstation': 'A',
+                'toyou': 'C'
+            };
+
+            let html = `
+                <div class="branch-header">
+                    ${isPrime ? '<div class="branch-badge">PRIME</div>' : ''}
+                    <h2 class="branch-name">${branch.name}</h2>
+                    ${branch.logo ? `<img src="${branch.logo}" class="branch-logo" onerror="this.style.display='none'">` : ''}
+                </div>
+
+                <div class="detail-section">
+                    <div class="detail-section-title">Basic Information</div>
+                    <div class="detail-row">
+                        <span class="detail-label">Current Source</span>
+                        <span class="detail-value">${getDisplayName(branch.source || branch.provider_name)}</span>
+                    </div>
+                    ${branch.rating ? `
+                    <div class="detail-row">
+                        <span class="detail-label">Rating</span>
+                        <span class="detail-value">${branch.rating} / 5</span>
+                    </div>
+                    ` : ''}
+                    ${branch.minimum_order ? `
+                    <div class="detail-row">
+                        <span class="detail-label">Minimum Order</span>
+                        <span class="detail-value">${branch.minimum_order} SAR</span>
+                    </div>
+                    ` : ''}
+                    <div class="detail-row">
+                        <span class="detail-label">Coordinates</span>
+                        <span class="detail-value" style="font-size: 11px;">${parseFloat(branch.lat).toFixed(6)}, ${parseFloat(branch.lng).toFixed(6)}</span>
+                    </div>
+                </div>
+            `;
+
+            if (sourcesCount > 1) {
+                html += `
+                    <div class="detail-section">
+                        <div class="detail-section-title">Available on ${sourcesCount} Sources</div>
+                `;
+
+                Object.keys(matches.sources).forEach(sourceType => {
+                    const sourceBranches = matches.sources[sourceType];
+                    const sourceBranch = sourceBranches[0];
+                    const isPrimeInSource = hasPrimeSubscription(sourceBranch);
+                    const color = colors[sourceType];
+
+                    html += `
+                        <div class="source-tag" style="background: ${color}15; border-left: 3px solid ${color}; width: 100%;">
+                            <span class="source-tag-indicator" style="background: ${color};"></span>
+                            <span style="flex: 1; font-weight: 600;">${sourceNames[sourceType]}</span>
+                            ${isPrimeInSource ? '<span class="branch-badge" style="margin: 0;">PRIME</span>' : ''}
+                        </div>
+                    `;
+                });
+
+                html += `</div>`;
+            } else {
+                html += `
+                    <div class="detail-section">
+                        <div class="detail-section-title">Source Coverage</div>
+                        <p style="color: #999; font-size: 13px;">This branch is only available on ${getDisplayName(branch.source || branch.provider_name)}</p>
+                    </div>
+                `;
+            }
+
+            detailDiv.innerHTML = html;
+        }
+
+        // Create popup HTML (legacy, keeping for heatmap)
+        function createPopupHTML(branch) {
+            const matches = getBranchMatches(branch);
+            const sourcesCount = Object.keys(matches.sources).length;
+
+            return ''; // Popups no longer used, keeping function for compatibility
+        }
+
+        // تحديث الفلاتر
+        function updateFilters() {
+            updateLayerFiltersWithIntersection();
+        }
+
+        // تبديل التجميع
+        function toggleClusters() {
+            const showClusters = document.getElementById('show-clusters').checked;
+            const sources = ['jahez', 'chefs', 'hungerstation', 'toyou'];
+
+            sources.forEach(source => {
+                if (map.getLayer(source + '-clusters')) {
+                    map.setLayoutProperty(
+                        source + '-clusters',
+                        'visibility',
+                        showClusters ? 'visible' : 'none'
+                    );
+                    map.setLayoutProperty(
+                        source + '-cluster-count',
+                        'visibility',
+                        showClusters ? 'visible' : 'none'
+                    );
+                }
+            });
+        }
+
+        // Add heatmap layer
+        function addHeatmapLayer() {
+            if (heatmapAdded) return;
+
+            // Collect farq_source_id from Jahez
+            const jahezSourceIds = new Set(
+                allBranches.jahez
+                    .filter(b => b.farq_source_id)
+                    .map(b => b.farq_source_id)
+            );
+
+            // Find competitor branches not in Jahez
+            const competitorOnlyBranches = [];
+
+            // From TheChefz
+            allBranches.chefs.forEach(branch => {
+                if (branch.farq_source_id && !jahezSourceIds.has(branch.farq_source_id)) {
+                    competitorOnlyBranches.push({ ...branch, sourceType: 'chefs' });
+                } else if (!branch.farq_source_id) {
+                    competitorOnlyBranches.push({ ...branch, sourceType: 'chefs' });
+                }
+            });
+
+            // From HungerStation
+            allBranches.hungerstation.forEach(branch => {
+                if (branch.farq_source_id && !jahezSourceIds.has(branch.farq_source_id)) {
+                    competitorOnlyBranches.push({ ...branch, sourceType: 'hungerstation' });
+                } else if (!branch.farq_source_id) {
+                    competitorOnlyBranches.push({ ...branch, sourceType: 'hungerstation' });
+                }
+            });
+
+            // From ToYou
+            allBranches.toyou.forEach(branch => {
+                if (branch.farq_source_id && !jahezSourceIds.has(branch.farq_source_id)) {
+                    competitorOnlyBranches.push({ ...branch, sourceType: 'toyou' });
+                }
+            });
+
+            // Create GeoJSON
+            const heatmapData = {
+                type: 'FeatureCollection',
+                features: competitorOnlyBranches.map(branch => ({
+                    type: 'Feature',
+                    geometry: {
+                        type: 'Point',
+                        coordinates: [branch.lng, branch.lat]
+                    },
+                    properties: {
+                        intensity: 1,
+                        name: branch.name || '',
+                        source: branch.source || branch.provider_name || '',
+                        sourceType: branch.sourceType || getSourceType(branch.provider_name) || '',
+                        logo: branch.logo || '',
+                        rating: branch.rating || '',
+                        isPrime: hasPrimeSubscription(branch) ? 1 : 0
+                    }
+                }))
+            };
+
+            // Add source
+            map.addSource('competitor-heatmap', {
+                type: 'geojson',
+                data: heatmapData
+            });
+
+            // Add heatmap layer
+            map.addLayer({
+                id: 'competitor-heatmap-layer',
+                type: 'heatmap',
+                source: 'competitor-heatmap',
+                maxzoom: 18,
+                paint: {
+                    'heatmap-weight': 1,
+                    'heatmap-intensity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        0, 1,
+                        18, 3
+                    ],
+                    'heatmap-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['heatmap-density'],
+                        0, 'rgba(33,102,172,0)',
+                        0.2, 'rgb(103,169,207)',
+                        0.4, 'rgb(209,229,240)',
+                        0.6, 'rgb(253,219,199)',
+                        0.8, 'rgb(239,138,98)',
+                        1, 'rgb(178,24,43)'
+                    ],
+                    'heatmap-radius': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        0, 5,
+                        9, 30,
+                        15, 50
+                    ],
+                    'heatmap-opacity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        7, 1,
+                        15, 0.8
+                    ]
+                }
+            });
+
+            // Add circle layer for high zoom
+            map.addLayer({
+                id: 'competitor-points',
+                type: 'circle',
+                source: 'competitor-heatmap',
+                minzoom: 14,
+                paint: {
+                    'circle-radius': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        14, 5,
+                        18, 10
+                    ],
+                    'circle-color': 'rgb(178,24,43)',
+                    'circle-stroke-color': 'white',
+                    'circle-stroke-width': 2,
+                    'circle-opacity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        14, 0,
+                        15, 0.8
+                    ]
+                }
+            });
+
+            // Show detail sidebar on heatmap point click
+            map.on('click', 'competitor-points', (e) => {
+                const coordinates = e.features[0].geometry.coordinates.slice();
+                const [lng, lat] = coordinates;
+                const props = e.features[0].properties;
+
+                // Find closest match
+                let closestMatch = null;
+                let minDistance = Infinity;
+
+                branchMatches.forEach((match, key) => {
+                    const distance = Math.sqrt(
+                        Math.pow(match.lat - lat, 2) + Math.pow(match.lng - lng, 2)
+                    );
+                    if (distance < minDistance && distance < 0.0001) {
+                        minDistance = distance;
+                        closestMatch = match;
+                    }
+                });
+
+                // Show in detail sidebar
+                showHeatmapDetail(props, closestMatch);
+            });
+
+            // Change cursor on hover
+            map.on('mouseenter', 'competitor-points', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', 'competitor-points', () => {
+                map.getCanvas().style.cursor = '';
+            });
+
+            // Hide layers by default
+            map.setLayoutProperty('competitor-heatmap-layer', 'visibility', 'none');
+            map.setLayoutProperty('competitor-points', 'visibility', 'none');
+
+            heatmapAdded = true;
+
+            console.log('Heatmap layer added successfully:', {
+                competitorBranches: competitorOnlyBranches.length.toLocaleString(),
+                jahezBranches: allBranches.jahez.length.toLocaleString()
+            });
+        }
+
+        // Show heatmap point detail in sidebar
+        function showHeatmapDetail(props, matches) {
+            document.getElementById('detail-placeholder').style.display = 'none';
+            const detailDiv = document.getElementById('branch-detail');
+            detailDiv.classList.add('active');
+
+            const colors = {
+                'jahez': '#4CAF50',
+                'chefs': '#2196F3',
+                'hungerstation': '#FF9800',
+                'toyou': '#9C27B0'
+            };
+
+            const sourceNames = {
+                'jahez': 'Jahez',
+                'chefs': 'B',
+                'hungerstation': 'A',
+                'toyou': 'C'
+            };
+
+            let html = `
+                <div class="branch-header">
+                    <h2 class="branch-name">Missing from Jahez</h2>
+                    <p style="color: #d32f2f; font-size: 14px; margin: 10px 0;">This location is not covered by Jahez - Opportunity for expansion</p>
+                </div>
+
+                <div class="detail-section">
+                    <div class="detail-section-title">Available on Other Sources</div>
+            `;
+
+            if (matches && matches.sources) {
+                const availableSources = Object.keys(matches.sources).filter(s => s !== 'jahez');
+
+                availableSources.forEach(sourceType => {
+                    const sourceBranches = matches.sources[sourceType];
+                    const branch = sourceBranches[0];
+                    const color = colors[sourceType];
+                    const isPrime = hasPrimeSubscription({ ...branch, sourceType });
+
+                    html += `
+                        <div class="source-tag" style="background: ${color}15; border-left: 3px solid ${color}; width: 100%;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; color: ${color};">${sourceNames[sourceType]}</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 4px;">${branch.name}</div>
+                                ${branch.rating ? `<div style="font-size: 11px; color: #999; margin-top: 2px;">Rating: ${branch.rating} / 5</div>` : ''}
+                            </div>
+                            ${isPrime ? '<span class="branch-badge" style="margin: 0;">PRIME</span>' : ''}
+                        </div>
+                    `;
+                });
+            } else if (props.name && props.source) {
+                const sourceType = props.sourceType || '';
+                const color = colors[sourceType] || '#666';
+                const isPrimeValue = props.isPrime === 1 || props.isPrime === '1' || props.isPrime === true;
+
+                html += `
+                    <div class="source-tag" style="background: ${color}15; border-left: 3px solid ${color}; width: 100%;">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; color: ${color};">${sourceNames[sourceType] || props.source}</div>
+                            <div style="font-size: 12px; color: #666; margin-top: 4px;">${props.name}</div>
+                            ${props.rating && props.rating !== '' ? `<div style="font-size: 11px; color: #999; margin-top: 2px;">Rating: ${props.rating} / 5</div>` : ''}
+                        </div>
+                        ${isPrimeValue ? '<span class="branch-badge" style="margin: 0;">PRIME</span>' : ''}
+                    </div>
+                `;
+            }
+
+            html += `
+                </div>
+                <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
+                    <div style="font-weight: 600; color: #856404; margin-bottom: 5px;">Opportunity Insight</div>
+                    <div style="font-size: 13px; color: #856404;">This location has demand from competitor platforms but is not covered by Jahez. Consider expanding to this area.</div>
+                </div>
+            `;
+
+            detailDiv.innerHTML = html;
+        }
+
+        // Toggle heatmap layer
+        function toggleHeatmap() {
+            const showHeatmap = document.getElementById('show-heatmap').checked;
+
+            if (map.getLayer('competitor-heatmap-layer')) {
+                map.setLayoutProperty('competitor-heatmap-layer', 'visibility', showHeatmap ? 'visible' : 'none');
+                map.setLayoutProperty('competitor-points', 'visibility', showHeatmap ? 'visible' : 'none');
+            }
+        }
+
+        // Resize map on window resize
+        window.addEventListener('resize', () => {
+            if (document.getElementById('map-page').classList.contains('active')) {
+                map.resize();
+            }
+        });
+
+        // Load data on page load
+        loadData();
+    </script>
+</body>
+
+</html>
